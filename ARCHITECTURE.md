@@ -160,9 +160,41 @@ ahead of everything else.
 
 ## Distribution
 
-Homebrew is the PRIMARY channel: a version manager installable only via
-`dart pub global activate` cannot bootstrap a machine that has no Dart. The
-shipped artifact is an AOT binary (`dart compile exe`) attached to a GitHub
-Release, with `mrgnhnt96/homebrew-tap` carrying `Formula/dvm.rb`. pub.dev is a
-secondary channel: package `dvm_cli`, executable `dvm` (the short name is squatted
-by a nine-year-old Dart 1 alpha).
+The shipped artifact is an **AOT-compiled binary** (`dart compile exe`) attached to a
+GitHub Release. A version manager cannot require the language it manages in order to
+install itself, so `dart pub global activate` cannot be the primary channel — it would
+mean needing Dart to install the thing that installs Dart.
+
+There is **no Homebrew tap**. An install script plus a self-updater costs no second
+repository, no cross-repo credential (`GITHUB_TOKEN` only grants access to the repo a
+workflow runs in), and no formula-bumping job, and it reaches Linux users that a tap
+largely does not.
+
+**Release assets** are named `dvm-<os>-<arch>.zip`, each containing a bare `dvm`
+binary (`dvm.exe` on Windows), for: `linux-x64`, `linux-arm64`, `macos-x64`,
+`macos-arm64`, `windows-x64`. This naming is a CONTRACT: `install.sh` and the
+`dvm update` command both construct these filenames, so changing it breaks every
+installed copy's ability to update itself.
+
+**Installing** is `curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | sh`,
+linked from the README. The script detects os/arch, downloads the matching asset from
+the latest release, verifies its checksum, and installs the binary to `~/.dvm/bin/dvm`.
+
+**Updating** is `dvm update`, which does the same thing from inside the CLI. The
+version it compares against is `kVersion` in a generated `lib/src/gen/version.dart`,
+stamped at build time. Ordinary commands also run a check that prints a one-line notice
+when a newer release exists; it is skipped when running from source rather than a
+compiled binary, and suppressed by `--no-version-check`.
+
+Do **not** resolve the latest release through GitHub's `/releases/latest` endpoint.
+Scan `/releases` for the newest non-draft, non-prerelease entry that actually carries
+the expected asset — a repo that later publishes per-package releases will otherwise
+resolve "latest" to a release with no CLI binary in it.
+
+Replacing the running binary works on POSIX because `rename` over a running executable
+keeps the inode alive, so temp-file-then-rename is safe. Windows cannot replace a
+running `.exe`; there the current binary must be renamed aside first, then the new one
+written in its place.
+
+pub.dev remains a SECONDARY convenience for people who already have Dart: package
+`dvm_cli`, executable `dvm` (the short name is squatted by a nine-year-old Dart 1 alpha).
