@@ -1,7 +1,11 @@
 import 'package:file/file.dart';
 
+import '../archive/sdk_installer.dart';
 import 'channel.dart';
 import 'exceptions.dart';
+import 'paths.dart';
+import 'platform.dart';
+import 'releases.dart';
 
 /// Puts SDKs into `~/.dvm/versions` and says whether one is already there.
 ///
@@ -27,11 +31,25 @@ abstract class Installer {
   });
 }
 
-/// The seam `lib/dvm.dart` calls to get an [Installer].
+/// The seam `DvmContext.wire` calls to get an [Installer].
 ///
-/// Replace this body when the installer lands; `lib/dvm.dart` calls this
-/// function and must not have to change.
-Installer createInstaller() => const UnimplementedInstaller();
+/// It takes the collaborators an installer cannot do without — a real one has
+/// to know where `~/.dvm` is and where to fetch archives from — so that
+/// `lib/dvm.dart` still never names an implementation.
+Installer createInstaller({
+  required FileSystem fileSystem,
+  required DvmPaths paths,
+  required ReleaseClient releases,
+  required HostPlatform Function() hostPlatform,
+  required StringSink progress,
+}) =>
+    SdkInstaller(
+      fileSystem: fileSystem,
+      paths: paths,
+      releases: releases,
+      hostPlatform: hostPlatform,
+      progress: progress,
+    );
 
 /// Stands in until a real [Installer] exists.
 class UnimplementedInstaller implements Installer {

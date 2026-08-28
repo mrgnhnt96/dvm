@@ -1,3 +1,4 @@
+import '../archive/dart_archive_client.dart';
 import 'channel.dart';
 import 'exceptions.dart';
 import 'platform.dart';
@@ -63,10 +64,9 @@ abstract class ReleaseClient {
 
 /// The seam `lib/dvm.dart` calls to get a [ReleaseClient].
 ///
-/// The archive client is built by its own part of the CLI. Replace this body
-/// when it lands — `lib/dvm.dart` calls this function and must not have to
-/// change.
-ReleaseClient createReleaseClient() => const UnimplementedReleaseClient();
+/// The archive client is built by its own part of the CLI; this is the one
+/// line that names it, so `lib/dvm.dart` never has to.
+ReleaseClient createReleaseClient() => DartArchiveClient();
 
 /// Stands in until a real [ReleaseClient] exists.
 ///
