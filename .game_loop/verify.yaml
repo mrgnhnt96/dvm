@@ -57,3 +57,50 @@
 # it. Being unchecked NEVER blocks: this file ships empty, so "unlisted ⇒ refused" would refuse
 # your first commit with the fix sitting behind the gate. Want the strict version? Opt in with a
 # catch-all rule:  "*": ["<your test command>"].
+
+# ---------------------------------------------------------------------------
+# dvm's rules.
+#
+# These mirror what .github/workflows/test.yml runs, in the same scope and with
+# the same fatality. NOTE that workflow is being written by the `release` leaf as
+# this lands, so today this file is the SPECIFICATION of what CI will run. When
+# the workflow exists, the two must be compared: if they drift, this gate goes
+# green at different things than CI does, which is exactly the failure the header
+# of this file warns about.
+#
+# `dart pub get` is part of the analyze rule because members of a pub workspace
+# cannot resolve on their own — without it a fresh tree fails at "no
+# pubspec.lock", which reads like a broken check rather than an unresolved
+# workspace.
+"packages/dvm/**":
+  - "dart pub get && dart analyze"
+  - "dart format --output=none --set-exit-if-changed packages/dvm"
+  - "cd packages/dvm && dart test"
+
+# The workspace root's pubspec and lock decide what every member resolves to, so
+# a change to either is verified by the same suite.
+"pubspec.yaml":
+  - "dart pub get && dart analyze"
+  - "cd packages/dvm && dart test"
+"pubspec.lock":
+  - "dart pub get && dart analyze"
+  - "cd packages/dvm && dart test"
+
+# The install script is shipped to users verbatim over curl. It has no test
+# suite; syntax-checking it is the one mechanical check that can fail.
+"install.sh":
+  - "sh -n install.sh"
+
+unchecked-ok:
+  # Prose. Wrong content here is a review problem, not something a command can
+  # decide. The docs SITE (apps/docs) gets real rules when that leaf lands, and
+  # this entry must NOT be widened to cover it.
+  - "*.md"
+  # The harnesses' own state and rule files. game_loop verifies its own
+  # integrity at spawn, and re-checking it from inside itself proves nothing.
+  - ".game_loop/**"
+  - ".showrunner/**"
+  - ".claude/**"
+  - ".github/**"
+  - "LICENSE"
+  - ".gitignore"
