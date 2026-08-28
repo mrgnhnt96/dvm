@@ -1,0 +1,82 @@
+name: Test
+
+on:
+  # `push` is limited to the default branch and `pull_request` covers the rest.
+  # Without the branch filter every PR runs this workflow TWICE — once for the
+  # push to the branch and once for the pull request — which doubles the bill
+  # and halves the value of a red tick, because half of them are duplicates.
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A second push to the same PR makes the first run's answer irrelevant.
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    # BOTH, not just ubuntu. dvm is almost entirely platform-specific
+    # behaviour — path spelling, the executable bit, `chmod`, `rename` over a
+    # running binary, where HOME is — and a suite that only ever runs on Linux
+    # would be green for every macOS-only bug in it.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # `stable` rather than a pinned version: dvm's whole job is to be right
+      # about the current Dart toolchain, so finding out that a new SDK broke
+      # something is the point of this job. The cost is that a formatter change
+      # in a new SDK can turn this red without anybody touching the code —
+      # which is a real signal, just an annoying one.
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      # From the REPO ROOT, not from packages/dvm. The root pubspec declares
+      # `workspace: [packages/dvm]`, and a workspace member cannot resolve on
+      # its own — `dart pub get` inside packages/dvm fails outright.
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Analyze
+        run: dart analyze
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Test
+        working-directory: packages/dvm
+        run: dart test
+
+      # install.sh is the only part of dvm that is not Dart, and it is the part
+      # that runs on a machine with nothing on it. `sh -n` is the parse check
+      # every runner can do; shellcheck is preinstalled on the ubuntu images and
+      # absent on the macOS ones, so it is run when it is there rather than
+      # installed on demand.
+      - name: Check install.sh
+        run: |
+          sh -n install.sh
+          if command -v shellcheck > /dev/null 2>&1; then
+            shellcheck --shell=sh install.sh
+          else
+            echo "shellcheck not present on this runner; ran sh -n only"
+          fi
+          sh tool/test_install_sh.sh
+
+      - name: Check the release scripts parse
+        run: |
+          bash -n tool/stamp_version.sh
+          bash -n tool/package_release_assets.sh

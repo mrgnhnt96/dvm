@@ -14,9 +14,10 @@ environment:
   sdk: ^3.6.0
 
 # The executable is `dvm` even though the package is `dvm_cli`: the short
-# name is squatted on pub.dev by a 9-year-old Dart 1 alpha. Homebrew is the
+# name is squatted on pub.dev by a 9-year-old Dart 1 alpha. install.sh is the
 # primary channel and installs the same binary under the same name, so what
-# a user types is `dvm` either way.
+# a user types is `dvm` either way. (There is no Homebrew tap; ARCHITECTURE.md's
+# "Distribution" section says why.)
 executables:
   dvm:
 

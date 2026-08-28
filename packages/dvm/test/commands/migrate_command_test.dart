@@ -168,7 +168,8 @@ void main() {
       expect(code, 0);
       expect(treeOf(CommandHarness.dvmHome), before);
       expect(
-        harness.fileSystem.directory('${CommandHarness.dvmHome}/versions')
+        harness.fileSystem
+            .directory('${CommandHarness.dvmHome}/versions')
             .existsSync(),
         isFalse,
       );
@@ -512,8 +513,7 @@ void main() {
       }
     });
 
-    test('--clean --dry-run lists the deletions and changes nothing',
-        () async {
+    test('--clean --dry-run lists the deletions and changes nothing', () async {
       writeLegacyInstall();
       await runMigrate(['--yes']);
       harness.clearOutput();
@@ -549,8 +549,7 @@ void main() {
   });
 
   group('Migrator', () {
-    test('parses the version out of the real environments/default snippet',
-        () {
+    test('parses the version out of the real environments/default snippet', () {
       writeLegacyInstall();
       final migrator = Migrator(
         fileSystem: harness.fileSystem,

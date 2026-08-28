@@ -7,6 +7,7 @@ import 'platform.dart';
 import 'process.dart';
 import 'releases.dart';
 import 'resolver.dart';
+import 'updater.dart';
 
 /// Everything a command is allowed to touch, handed to it at construction.
 ///
@@ -30,6 +31,8 @@ class DvmContext {
     required this.releases,
     required this.installer,
     required this.processes,
+    required this.updater,
+    required this.executablePath,
     required this.hostPlatform,
     required this.out,
     required this.err,
@@ -38,16 +41,19 @@ class DvmContext {
   /// Builds a context from the pieces that vary, wiring up the rest.
   ///
   /// [platformVersion] is `Platform.version`; it is the only place dart:io
-  /// exposes the host architecture.
+  /// exposes the host architecture. [executablePath] is
+  /// `Platform.resolvedExecutable` — the binary `dvm update` replaces.
   factory DvmContext.wire({
     required FileSystem fileSystem,
     required Map<String, String> environment,
     required String platformVersion,
     required StringSink out,
     required StringSink err,
+    String executablePath = '',
     ReleaseClient? releases,
     Installer? installer,
     ProcessRunner? processes,
+    Updater? updater,
   }) {
     final paths = DvmPaths(fileSystem: fileSystem, environment: environment);
     final config = ConfigStore(fileSystem: fileSystem, paths: paths);
@@ -79,6 +85,13 @@ class DvmContext {
             progress: out,
           ),
       processes: processes ?? createProcessRunner(),
+      updater: updater ??
+          Updater(
+            fileSystem: fileSystem,
+            hostPlatform: hostPlatform,
+            environment: environment,
+          ),
+      executablePath: executablePath,
       hostPlatform: hostPlatform,
       out: out,
       err: err,
@@ -94,6 +107,15 @@ class DvmContext {
   final ReleaseClient releases;
   final Installer installer;
   final ProcessRunner processes;
+
+  /// dvm's own releases: what is newest, and how to become it.
+  final Updater updater;
+
+  /// The path to the running `dvm` binary, which `dvm update` replaces.
+  ///
+  /// Empty when dvm is not running as a compiled binary — nothing reads it in
+  /// that case, because [Updater] refuses to update a source checkout.
+  final String executablePath;
 
   /// The host OS/arch, computed on demand so that detection failures surface
   /// in the command that needs an archive rather than at startup.
