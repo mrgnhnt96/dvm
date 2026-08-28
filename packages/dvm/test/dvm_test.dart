@@ -2,7 +2,8 @@ import 'package:dvm_cli/dvm.dart';
 import 'package:file/memory.dart';
 import 'package:test/test.dart';
 
-/// Every command in ARCHITECTURE.md's command-surface table.
+/// Every command in ARCHITECTURE.md's command-surface table, plus `update`
+/// from its "Distribution" section.
 ///
 /// Other parts of the CLI fill these in one file at a time; if one of them ever
 /// has to touch `lib/dvm.dart` to be reachable, this list was wrong.
@@ -21,6 +22,7 @@ const List<String> commandSurface = [
   'setup',
   'migrate',
   'doctor',
+  'update',
 ];
 
 /// The two spellings the table gives as alternatives.

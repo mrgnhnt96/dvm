@@ -190,11 +190,15 @@ class MigrationPlan {
   /// parse is not the same observation as a file that is not there.
   final String? activeVersionProblem;
 
-  List<PlannedMigration> get moves =>
-      [for (final entry in entries) if (entry.willMove) entry];
+  List<PlannedMigration> get moves => [
+        for (final entry in entries)
+          if (entry.willMove) entry
+      ];
 
-  List<PlannedMigration> get skips =>
-      [for (final entry in entries) if (!entry.willMove) entry];
+  List<PlannedMigration> get skips => [
+        for (final entry in entries)
+          if (!entry.willMove) entry
+      ];
 
   /// Whether there is a cbracken install here at all.
   bool get isPresent => hasDartsDir || leftovers.isNotEmpty;

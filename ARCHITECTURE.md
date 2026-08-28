@@ -157,6 +157,7 @@ ahead of everything else.
 | `setup` | create shims, print the PATH line, detect a shadowing shell function |
 | `migrate` | import cbracken dvm's SDKs, then offer to remove its files |
 | `doctor` | PATH order, shim health, stale symlinks, shadowing function, config validity |
+| `update` | replace the running dvm binary with the newest release; `--check` only reports |
 
 ## Distribution
 

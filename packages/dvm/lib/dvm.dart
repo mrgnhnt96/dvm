@@ -20,6 +20,7 @@ import 'src/commands/migrate_command.dart';
 import 'src/commands/remove_command.dart';
 import 'src/commands/setup_command.dart';
 import 'src/commands/unalias_command.dart';
+import 'src/commands/update_command.dart';
 import 'src/commands/use_command.dart';
 import 'src/commands/which_command.dart';
 import 'src/core/context.dart';
@@ -27,6 +28,8 @@ import 'src/core/exceptions.dart';
 import 'src/core/installer.dart';
 import 'src/core/process.dart';
 import 'src/core/releases.dart';
+import 'src/core/updater.dart';
+import 'src/gen/version.dart';
 
 export 'src/commands/not_implemented.dart';
 export 'src/core/channel.dart';
@@ -39,6 +42,8 @@ export 'src/core/platform.dart';
 export 'src/core/process.dart';
 export 'src/core/releases.dart';
 export 'src/core/resolver.dart';
+export 'src/core/updater.dart';
+export 'src/gen/version.dart';
 
 /// Bad usage — `EX_USAGE` from sysexits(3).
 const int usageExitCode = 64;
@@ -58,6 +63,8 @@ Future<int> run(
   ReleaseClient? releases,
   Installer? installer,
   ProcessRunner? processes,
+  Updater? updater,
+  String? executablePath,
 }) async {
   final output = out ?? stdout;
   final errors = err ?? stderr;
@@ -68,9 +75,13 @@ Future<int> run(
     platformVersion: platformVersion ?? Platform.version,
     out: output,
     err: errors,
+    // `resolvedExecutable`, not `executable`: the latter can be a bare name
+    // found on PATH, and `dvm update` has to rename over a real path.
+    executablePath: executablePath ?? Platform.resolvedExecutable,
     releases: releases,
     installer: installer,
     processes: processes,
+    updater: updater,
   );
 
   try {
@@ -96,11 +107,19 @@ Future<int> run(
 class DvmCommandRunner extends CommandRunner<int> {
   DvmCommandRunner(this.context)
       : super('dvm', 'A per-project Dart SDK version manager.') {
-    argParser.addFlag(
-      'version',
-      negatable: false,
-      help: 'Print the dvm version.',
-    );
+    argParser
+      ..addFlag(
+        'version',
+        negatable: false,
+        help: 'Print the dvm version.',
+      )
+      // The escape hatch ARCHITECTURE.md names. Anything scripted against dvm
+      // wants its output to be exactly what it asked for.
+      ..addFlag(
+        'version-check',
+        defaultsTo: true,
+        help: 'Notice when a newer dvm has been released.',
+      );
 
     addCommand(InstallCommand(context: context));
     addCommand(UseCommand(context: context));
@@ -116,6 +135,7 @@ class DvmCommandRunner extends CommandRunner<int> {
     addCommand(SetupCommand(context: context));
     addCommand(MigrateCommand(context: context));
     addCommand(DoctorCommand(context: context));
+    addCommand(UpdateCommand(context: context));
   }
 
   final DvmContext context;
@@ -131,9 +151,28 @@ class DvmCommandRunner extends CommandRunner<int> {
       context.out.writeln('dvm ${version()}');
       return 0;
     }
-    return super.runCommand(topLevelResults);
+
+    // Started BEFORE the command and reported after it, so the command's own
+    // work is what the check runs during. `dvm update` is excluded because it
+    // says all this itself, at more length.
+    final check = VersionCheck(
+      updater: context.updater,
+      paths: context.paths,
+      // stderr, not stdout: `dvm which --path` and `dvm list` are read by
+      // scripts, and a notice mixed into their output would be a breaking
+      // change that arrives on its own schedule.
+      out: context.err,
+      enabled: topLevelResults.flag('version-check') &&
+          topLevelResults.command?.name != UpdateCommand.commandName,
+    )..start();
+
+    try {
+      return await super.runCommand(topLevelResults);
+    } finally {
+      await check.report();
+    }
   }
 }
 
 /// The version of this build of dvm.
-String version() => '0.1.0-dev';
+String version() => kVersion;
