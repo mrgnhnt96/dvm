@@ -1,0 +1,14 @@
+# Dart
+.dart_tool/
+.packages
+build/
+doc/api/
+
+# Jaspr
+.jaspr_web_dev/
+
+# showrunner worktrees
+.worktrees/
+
+# macOS
+.DS_Store

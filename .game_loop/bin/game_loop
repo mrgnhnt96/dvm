@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Dispatches to the CENTRAL game_loop install (this repo is wired via `install.sh --central`).
+# Tracked in git — must stay machine-agnostic: no baked absolute path, so every clone of this repo
+# shares this file byte-for-byte whether or not that clone's own machine has a central install set up.
+#
+# GAME_LOOP_HOME is set to THIS repo's own .game_loop/, so the central binary reads and writes rules
+# and state HERE — never in the shared copy, which the next central refresh replaces outright.
+#
+# Fail posture, by subcommand: the three HOOK entrypoints (limitgate/stopgate/sessionstart) fail
+# OPEN — there is a live tool call or turn-end waiting on the exit code, and blocking it over a
+# missing central install would be worse than letting it through unchecked. Every other subcommand
+# (status, claim, self, confidence, ...) is typed by a human or agent expecting a real answer, so it
+# fails LOUD instead of returning nothing.
+central="${GAME_LOOP_CENTRAL:-$HOME/.claude/game_loop-central}/.game_loop"
+if [ -x "$central/bin/game_loop" ]; then
+  GAME_LOOP_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" exec "$central/bin/game_loop" "$@"
+fi
+case "${1:-}" in
+  limitgate|stopgate|sessionstart) exit 0 ;;
+  *)
+    echo "game_loop: no central install at $central" >&2
+    echo "  set GAME_LOOP_CENTRAL, or populate it: game_loop self --pin <ref> --dest ${central%/.game_loop}" >&2
+    exit 1 ;;
+esac

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Dispatches to the CENTRAL watchdog (this repo is wired via `install.sh --central`). Tracked in
+# git — must stay machine-agnostic, no baked path.
+#
+# Fails open, silently, on a missing central install: a missing watchdog is already an accepted
+# quiet degradation (no idle-rings) — never a reason to block Stop, and there is no tool call here
+# for a loud message to protect.
+central="${GAME_LOOP_CENTRAL:-$HOME/.claude/game_loop-central}/.game_loop"
+if [ -x "$central/bin/watchdog" ]; then
+  GAME_LOOP_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" exec "$central/bin/watchdog" "$@"
+fi
+exit 0

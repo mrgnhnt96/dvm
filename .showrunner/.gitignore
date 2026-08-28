@@ -1,0 +1,25 @@
+# showrunner RUNTIME state — not source. config.json IS source; commit it.
+graph.db
+graph.db-*
+locks/
+scratch/
+campaign.json
+routing.jsonl
+waiting.jsonl
+events.jsonl
+hook-heartbeat.jsonl
+*.lock
+baseline.json
+integration-commit.json
+# Machine-specific overrides. The docs point people here for absolute paths, and without this
+# line the file lands NEITHER TRACKED NOR IGNORED -- the exact state doctor flags elsewhere.
+# Reported by a consumer who had to use .git/info/exclude instead, and who was right that an
+# exclusion living outside the payload vanishes on the next upgrade.
+config.local.json
+seen-issues.json
+
+# showrunner runtime state and the tool itself, added by install.sh. Present on a
+# fresh install and topped up on every upgrade, because a rule that only lands when the
+# file is first created never reaches anybody who already had the tool.
+bin/
+lib/

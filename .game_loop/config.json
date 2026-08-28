@@ -1,0 +1,27 @@
+{
+  "project_name": "dvm",
+  "read_roots": [
+    "~/Development/flutter/picto/apps/docs",
+    "~/Development/dart/zonai/apps/website"
+  ],
+  "allow_write_roots": [],
+  "deploy_verbs": [
+    "dart pub publish",
+    "gh release create",
+    "gh repo delete",
+    "git push --force"
+  ],
+  "upstream_repos": [],
+  "mcp_read_only_tools": [],
+  "trans_nudge_every": 12,
+  "watchdog": {
+    "idle_sec": 30,
+    "settle_sec": 5,
+    "ring_cap": 3
+  },
+  "flair": {
+    "enabled": true,
+    "support_name": "SupposedlySam",
+    "support_url": "https://github.com/sponsors/SupposedlySam"
+  }
+}

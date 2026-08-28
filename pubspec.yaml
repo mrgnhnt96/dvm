@@ -1,0 +1,15 @@
+name: dvm_workspace
+description: >
+  Workspace root for dvm, a per-project Dart SDK version manager. Not
+  published: the CLI in packages/dvm is the only publishable member.
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+
+workspace:
+  - packages/dvm
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.0

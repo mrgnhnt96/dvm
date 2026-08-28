@@ -1,0 +1,53 @@
+{
+  "checks": [
+    {
+      "cmd": "dart pub get && dart analyze",
+      "name": "analyze"
+    },
+    {
+      "cmd": "cd packages/dvm && dart test",
+      "name": "tests"
+    }
+  ],
+  "collision": {
+    "always_serialize": [
+      "test/**",
+      "tests/**"
+    ],
+    "extra_globs": []
+  },
+  "default_lane": "headless",
+  "graph": {
+    "backend": "auto",
+    "br_db": null,
+    "db": ".showrunner/graph.db"
+  },
+  "harness": {
+    "_note": "The per-agent harness is auto-detected. showrunner ASKS it which files are rules and whether a worktree matches its parent \u2014 it keeps no list of its own. Track the harness dir in git (simplest: it then crosses into every worktree by itself), or set \"installer\" to the path of its install script so each worktree is provisioned with the PARENT's rules. Never let a worktree get freshly-seeded rules: an installer seeds user-owned files only when absent, so a blank verify.yaml means a commit gate that owes nothing and reports success.",
+    "installer": null,
+    "provision": "auto",
+    "require": true
+  },
+  "inject": [],
+  "lanes": [
+    {
+      "lane": "headless",
+      "match": {
+        "labels": [
+          "cli",
+          "docs",
+          "ci",
+          "test",
+          "analysis"
+        ]
+      },
+      "name": "pure-logic"
+    }
+  ],
+  "lock_root": null,
+  "project_name": "dvm",
+  "resources": [],
+  "scratch_root": ".showrunner/scratch",
+  "shared_state": [],
+  "worktree_root": ".worktrees"
+}

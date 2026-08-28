@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Dispatches to the CENTRAL verify install (this repo is wired via `install.sh --central`). Tracked
+# in git — must stay machine-agnostic, no baked path.
+#
+# GAME_LOOP_HOME is set to THIS repo's own .game_loop/, so verify.yaml and verified.json are read
+# from and written to HERE, never the shared copy.
+#
+# On a missing central install: print to STDOUT and exit non-zero, never silently exit 0. Whatever
+# called this — a human, run_verify_check() (for `confidence --mark`), the write guard's commit
+# gate — must see "cannot verify" as distinct from "nothing owed"; treating an absent binary as a
+# clean tree is exactly the false green this tool exists to prevent.
+central="${GAME_LOOP_CENTRAL:-$HOME/.claude/game_loop-central}/.game_loop"
+if [ -x "$central/bin/verify" ]; then
+  GAME_LOOP_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" exec "$central/bin/verify" "$@"
+fi
+echo "verify: no central install at $central — cannot check anything, this is NOT a pass"
+echo "  set GAME_LOOP_CENTRAL, or populate it: game_loop self --pin <ref> --dest ${central%/.game_loop}"
+exit 1
