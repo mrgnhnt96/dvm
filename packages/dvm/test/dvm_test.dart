@@ -85,9 +85,23 @@ void main() {
     }
   });
 
-  test('every command runs and reports that it is not implemented yet',
+  test('every command still to be written reports that, rather than crashing',
       () async {
+    final runner = DvmCommandRunner(
+      DvmContext.wire(
+        fileSystem: fs,
+        environment: {'HOME': '/home/dev'},
+        platformVersion: 'on "macos_arm64"',
+        out: out,
+        err: err,
+      ),
+    );
+
+    // Asking the command object whether it still carries the placeholder,
+    // rather than listing the unwritten commands here, is what keeps this test
+    // from having to be edited every time one of them becomes real.
     for (final command in commandSurface) {
+      if (runner.commands[command] is! NotImplementedCommand) continue;
       out.clear();
       err.clear();
 

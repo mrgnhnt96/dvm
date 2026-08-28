@@ -52,6 +52,9 @@ class DvmContext {
     final paths = DvmPaths(fileSystem: fileSystem, environment: environment);
     final config = ConfigStore(fileSystem: fileSystem, paths: paths);
     final dvmrc = DvmrcStore(fileSystem: fileSystem);
+    // Lazy: an unsupported host must not stop `dvm --help` from printing.
+    HostPlatform hostPlatform() => HostPlatform.detect(platformVersion);
+    final releaseClient = releases ?? createReleaseClient();
     return DvmContext(
       fileSystem: fileSystem,
       environment: environment,
@@ -65,11 +68,18 @@ class DvmContext {
         dvmrc: dvmrc,
         environment: environment,
       ),
-      releases: releases ?? createReleaseClient(),
-      installer: installer ?? createInstaller(),
+      releases: releaseClient,
+      installer: installer ??
+          createInstaller(
+            fileSystem: fileSystem,
+            paths: paths,
+            releases: releaseClient,
+            hostPlatform: hostPlatform,
+            // Download progress is normal output, not a diagnostic.
+            progress: out,
+          ),
       processes: processes ?? createProcessRunner(),
-      // Lazy: an unsupported host must not stop `dvm --help` from printing.
-      hostPlatform: () => HostPlatform.detect(platformVersion),
+      hostPlatform: hostPlatform,
       out: out,
       err: err,
     );
