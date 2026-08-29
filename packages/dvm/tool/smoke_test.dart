@@ -25,7 +25,7 @@ import 'dart:io';
 /// "the channel moved".
 const String defaultSdkVersion = '3.5.4';
 
-Future<int> main(List<String> arguments) async {
+Future<void> main(List<String> arguments) async {
   final sdkVersion =
       _optionValue(arguments, '--sdk-version') ?? defaultSdkVersion;
   final repoRoot = Directory.current;
@@ -52,15 +52,19 @@ Future<int> main(List<String> arguments) async {
     final binary = await smoke.compile(repoRoot, scratch);
     if (binary == null) {
       stdout.writeln('Compiling dvm failed, so nothing else could be run.');
-      return 1;
+    } else {
+      await smoke.runChecks(binary);
     }
-    await smoke.runChecks(binary);
   } finally {
     smoke.report();
     _deleteQuietly(scratch);
   }
 
-  return smoke.failed ? 1 : 0;
+  // `exitCode`, not `return`: the Dart VM ignores what `main` returns, so a
+  // script that returned 1 here would report every failure it found and then
+  // exit 0, and CI would go green on a red smoke test. That is exactly what
+  // this script did on its first run.
+  exitCode = smoke.failed ? 1 : 0;
 }
 
 /// The checks, and what each of them observed.
@@ -102,6 +106,7 @@ class _Smoke {
   }
 
   Future<void> runChecks(File dvm) async {
+    _reportSymlinkPrivilege();
     await _version(dvm);
     await _setup(dvm);
     final installed = await _install(dvm);
@@ -118,6 +123,36 @@ class _Smoke {
         'question that could not be answered. Read the install failure first.',
       );
     }
+  }
+
+  /// Says whether THIS machine can create a plain directory symlink.
+  ///
+  /// Reported rather than asserted, and it is the reason `dvm use` does not
+  /// simply call `Link.createSync` on Windows. Creating a symlink there needs
+  /// either Developer Mode or an elevated process, and a CI runner is not
+  /// evidence about a stock machine in either direction: an elevated runner
+  /// would go green on a call that fails for the user, and an unelevated one
+  /// would go red on a call that works for a developer with Developer Mode on.
+  /// So this line exists to say WHICH kind of machine produced the log below.
+  void _reportSymlinkPrivilege() {
+    final target = Directory(
+      '${project.path}${Platform.pathSeparator}symlink-probe-target',
+    )..createSync(recursive: true);
+    final link = Link(
+      '${project.path}${Platform.pathSeparator}symlink-probe',
+    );
+    String verdict;
+    try {
+      link.createSync(target.path);
+      verdict = 'yes';
+      link.deleteSync();
+    } on FileSystemException catch (error) {
+      verdict = 'no (${error.osError?.message ?? error.message})';
+    }
+    target.deleteSync(recursive: true);
+    stdout.writeln('--- can this machine create a plain directory symlink?');
+    stdout.writeln(verdict);
+    stdout.writeln('');
   }
 
   Future<void> _version(File dvm) async {
@@ -172,11 +207,14 @@ class _Smoke {
     );
     _expect(result, contains: 'Pinned Dart $sdkVersion');
 
+    // The canonical form is `{"dart": "<version>"}`; a bare version is only
+    // ever ACCEPTED on read, never written.
     final rc = File('${project.path}${Platform.pathSeparator}.dvmrc');
+    final written = rc.existsSync() ? rc.readAsStringSync() : '';
     _record(
-      '.dvmrc says $sdkVersion',
-      rc.existsSync() && rc.readAsStringSync().trim() == sdkVersion,
-      rc.existsSync() ? rc.readAsStringSync().trim() : 'no .dvmrc',
+      '.dvmrc pins $sdkVersion',
+      written.contains('"dart"') && written.contains('"$sdkVersion"'),
+      rc.existsSync() ? written.trim() : 'no .dvmrc',
     );
 
     // Reached THROUGH the link, which is the only thing an IDE does with it.
@@ -276,6 +314,15 @@ class _Smoke {
     final shims = '${dvmHome.path}${Platform.pathSeparator}shims';
     final separator = Platform.isWindows ? ';' : ':';
     final path = '$shims$separator${Platform.environment['PATH'] ?? ''}';
+    // DVM_HOME travels WITH the PATH override. Without it the shim's dvm reads
+    // the real ~/.dvm, finds nothing installed, and reports the pin as
+    // uninstalled -- a failure that looks like a resolution bug and is really
+    // the harness handing the child half an environment.
+    final environment = <String, String>{
+      'PATH': path,
+      if (Platform.isWindows) 'Path': path,
+      'DVM_HOME': dvmHome.path,
+    };
 
     if (Platform.isWindows) {
       // cmd.exe finds `dart.bat` through PATHEXT; nothing on the command line
@@ -285,7 +332,7 @@ class _Smoke {
         'cmd.exe',
         <String>['/c', 'dart', '--version'],
         workingDirectory: project.path,
-        environment: <String, String>{'PATH': path, 'Path': path},
+        environment: environment,
       );
       _expect(viaCmd, contains: 'Dart SDK version: $sdkVersion');
 
@@ -294,7 +341,7 @@ class _Smoke {
         'powershell.exe',
         <String>['-NoProfile', '-Command', 'dart --version'],
         workingDirectory: project.path,
-        environment: <String, String>{'PATH': path, 'Path': path},
+        environment: environment,
       );
       _expect(viaPowerShell, contains: 'Dart SDK version: $sdkVersion');
       return;
@@ -305,7 +352,7 @@ class _Smoke {
       'sh',
       <String>['-c', 'dart --version'],
       workingDirectory: project.path,
-      environment: <String, String>{'PATH': path},
+      environment: environment,
     );
     _expect(viaSh, contains: 'Dart SDK version: $sdkVersion');
   }

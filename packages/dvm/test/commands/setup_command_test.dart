@@ -1,3 +1,6 @@
+import 'package:args/command_runner.dart';
+import 'package:dvm_cli/dvm.dart';
+import 'package:dvm_cli/src/commands/setup_command.dart';
 import 'package:test/test.dart';
 
 import 'harness.dart';
@@ -102,6 +105,43 @@ void main() {
 
     expect(harness.errors, contains('/nope/dvm'));
     expect(harness.fileSystem.file('/dvm/shims/dart').existsSync(), isFalse);
+  });
+
+  test('recognises the Dart VM however the HOST spells the path to it',
+      () async {
+    // `Platform.resolvedExecutable` is spelled the way the machine running the
+    // tests spells paths; the filesystem under this harness is posix-style
+    // whatever machine that is. Asking the filesystem for the basename of a
+    // Windows path therefore returns the whole string, the guard below does
+    // not fire, and the user is told their path is not absolute instead of
+    // being told the one thing they need to know.
+    for (final vm in const [
+      '/usr/lib/dart/bin/dart',
+      r'C:\hostedtoolcache\windows\dart\3.13.2\x64\bin\dart.exe',
+      r'C:/tools/dart/bin/dart.exe',
+    ]) {
+      final context = DvmContext.wire(
+        fileSystem: harness.fileSystem,
+        environment: harness.environment,
+        platformVersion: '3.13.2 (stable) on "macos_arm64"',
+        out: harness.out,
+        err: harness.err,
+      );
+      final runner = CommandRunner<int>('dvm', 'test')
+        ..addCommand(SetupCommand(context: context, dvmExecutable: () => vm));
+
+      await expectLater(
+        runner.run(['setup']),
+        throwsA(
+          isA<ConfigException>().having(
+            (error) => error.message,
+            'message',
+            allOf(contains('running from source'), contains('--dvm-path')),
+          ),
+        ),
+        reason: '$vm was not recognised as the Dart VM',
+      );
+    }
   });
 
   test('refuses to write a shim pointing at the Dart VM', () async {

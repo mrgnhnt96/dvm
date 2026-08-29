@@ -86,8 +86,7 @@ class SetupCommand extends Command<int> {
     }
 
     final resolved = _dvmExecutable();
-    final basename = context.fileSystem.path.basename(resolved);
-    if (basename == 'dart' || basename == 'dart.exe') {
+    if (_isDartVm(resolved)) {
       throw ConfigException(
         'dvm is running from source (via $resolved), so it cannot tell where '
         'a dvm binary lives, and a shim pointing at the Dart VM would break '
@@ -97,6 +96,21 @@ class SetupCommand extends Command<int> {
       );
     }
     return context.fileSystem.file(resolved);
+  }
+
+  /// Whether [path] names the Dart VM rather than a dvm binary.
+  ///
+  /// The last segment after EITHER separator, rather than
+  /// `context.fileSystem.path.basename`. [path] comes from
+  /// `Platform.resolvedExecutable`, so it is always spelled the way the host
+  /// spells paths, while the injected filesystem may be a memory one with a
+  /// style of its own. Asking a posix-style context for the basename of
+  /// `C:\...\bin\dart.exe` returns the whole string, this guard does not
+  /// fire, and the user gets a confusing complaint about absolute paths from
+  /// [ShimWriter] instead of the one sentence that tells them what to do.
+  bool _isDartVm(String path) {
+    final segment = path.split(RegExp(r'[/\\]')).last;
+    return segment == 'dart' || segment == 'dart.exe';
   }
 
   /// The PATH line, named for the shell the user is actually in.
