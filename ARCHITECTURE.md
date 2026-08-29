@@ -60,6 +60,25 @@ names are never re-resolved over the network here — see below.
 `which`/`current` must report not just the resolved path but WHICH of these five
 rules produced it. Debuggability is the point.
 
+### Writes follow the same walk as reads
+
+`dvm use` updates the `.dvmrc` that rule 2 would find — the nearest one walking up —
+wherever it happens to live, and it uses `DvmrcStore.findNearest` to find it rather
+than repeating the walk. One walk, so write and read cannot disagree. Run in a
+subdirectory under a repository-root pin, `use` edits the root's file and says so,
+naming the absolute path it changed.
+
+Only when no `.dvmrc` exists anywhere up to the filesystem root does `use` create one,
+in the working directory. A monorepo package that genuinely needs its own SDK asks for
+that with `--here`, which creates a nested pin and reports which ancestor it now
+shadows. The nesting is available, but never arrives by accident from the directory
+someone happened to be standing in.
+
+`.dvm/dart_sdk` and the `--gitignore` rule go beside the `.dvmrc`, not beside the user:
+one pin owns exactly one symlink, so a later repin from anywhere in the tree updates the
+link that exists instead of stranding one in a subdirectory. `doctor` resolves the
+project the same way, as the parent of the `.dvmrc` it found.
+
 ## Aliases and channels
 
 Aliases are user-defined names in `config.json` mapping to a concrete version.
@@ -145,7 +164,7 @@ ahead of everything else.
 | Command | Behavior |
 |---|---|
 | `install <version\|channel\|alias>` | download, verify, extract, atomically install |
-| `use <version>` | write `.dvmrc` + `.dvm/dart_sdk`; auto-install if absent; `--global` sets default |
+| `use <version>` | update the governing `.dvmrc` + its `.dvm/dart_sdk`; auto-install if absent; `--here` pins this directory instead; `--global` sets default |
 | `list` / `ls` | installed versions, marking global and current-project |
 | `list-remote` | available releases from the archive |
 | `remove <version>` | delete from cache; refuse if global or an alias target unless `--force` |
