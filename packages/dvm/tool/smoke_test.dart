@@ -16,6 +16,7 @@
 // lists them all. One red CI job then reports every broken thing on that
 // platform rather than only the first, which is the difference between one
 // round trip to a Windows runner and six.
+import 'dart:async';
 import 'dart:io';
 
 /// The SDK this installs when `--sdk-version` is not given.
@@ -116,6 +117,7 @@ class _Smoke {
     await _dart(dvm);
     await _exec(dvm);
     await _shim(dvm);
+    await _replaceRunningBinary(dvm);
     await _doctor(dvm);
     if (!installed) {
       stdout.writeln(
@@ -161,10 +163,16 @@ class _Smoke {
   }
 
   Future<void> _setup(File dvm) async {
+    // The exit code is deliberately not asserted. `setup` returns 1 when
+    // something on THIS machine will shadow the shim -- a `dvm` shell function
+    // in a startup file, an older cbracken/dvm in the same home -- which is a
+    // fact about the machine, not about dvm. A clean runner exits 0; the
+    // maintainer's own laptop exits 1 and is right to.
     final result = await _dvm(
       dvm,
       'dvm setup',
       <String>['setup', '--dvm-path', dvm.path],
+      expectedExitCode: null,
     );
     _expect(result, contains: 'Wrote ');
 
@@ -371,6 +379,112 @@ class _Smoke {
       environment: environment,
     );
     _expect(viaSh, contains: 'Dart SDK version: $sdkVersion');
+  }
+
+  /// Puts ARCHITECTURE.md's claim about `dvm update` in front of the OS.
+  ///
+  /// It says POSIX can `rename` over a running executable because the inode
+  /// stays alive, and that Windows cannot replace a running `.exe` and needs
+  /// the old one renamed aside first. `Updater` is built entirely on that
+  /// distinction and it had never been executed on either platform -- the
+  /// updater's own tests run against a memory filesystem, where nothing is
+  /// ever really running.
+  ///
+  /// So this runs a copy of dvm, keeps it running, and tries both.
+  Future<void> _replaceRunningBinary(File dvm) async {
+    final directory = Directory(
+      '${project.path}${Platform.pathSeparator}update',
+    )..createSync(recursive: true);
+    final running = dvm.copySync(
+      '${directory.path}${Platform.pathSeparator}$_dvmName',
+    );
+
+    // A child that stays alive long enough to be replaced underneath, and
+    // exits on its own if anything here goes wrong.
+    final sleeper = File('${directory.path}${Platform.pathSeparator}wait.dart')
+      ..writeAsStringSync(
+        "import 'dart:io';\n\n"
+        'Future<void> main() async {\n'
+        "  File(r'${directory.path}${Platform.pathSeparator}ready')"
+        ".writeAsStringSync('up');\n"
+        '  await Future<void>.delayed(const Duration(seconds: 30));\n'
+        '}\n',
+      );
+
+    stdout.writeln('--- replacing a RUNNING dvm binary');
+    final process = await Process.start(
+      running.path,
+      <String>['dart', 'run', sleeper.path, '--no-version-check'],
+      workingDirectory: project.path,
+      environment: <String, String>{'DVM_HOME': dvmHome.path},
+      mode: ProcessStartMode.detachedWithStdio,
+    );
+    // Drained rather than read: a child whose pipe fills up stops, and this
+    // one is meant to sit still until it is replaced underneath.
+    unawaited(process.stdout.drain<void>());
+    unawaited(process.stderr.drain<void>());
+
+    final ready = File('${directory.path}${Platform.pathSeparator}ready');
+    for (var i = 0; i < 300 && !ready.existsSync(); i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if (!ready.existsSync()) {
+      process.kill();
+      _record(
+        'a copy of dvm was running to be replaced',
+        false,
+        'the child never came up',
+      );
+      return;
+    }
+
+    // The way an unaware updater would do it.
+    String? overwriteFailure;
+    try {
+      running.writeAsBytesSync(const <int>[0], flush: true);
+    } on FileSystemException catch (error) {
+      overwriteFailure = error.osError?.message ?? error.message;
+    }
+    stdout.writeln('overwriting it in place: '
+        '${overwriteFailure ?? 'allowed'}');
+    _record(
+      Platform.isWindows
+          ? 'Windows refuses to overwrite a running binary'
+          : 'POSIX allows writing over a running binary',
+      Platform.isWindows ? overwriteFailure != null : overwriteFailure == null,
+      overwriteFailure ?? 'no error',
+    );
+
+    // The way Updater does it: aside, then into place.
+    final incoming = File('${running.path}.new');
+    dvm.copySync(incoming.path);
+    String? replaceFailure;
+    try {
+      if (Platform.isWindows) {
+        running.renameSync('${running.path}.old');
+      }
+      incoming.renameSync(running.path);
+    } on FileSystemException catch (error) {
+      replaceFailure = error.osError?.message ?? error.message;
+    }
+    stdout.writeln('renaming a new one into place: '
+        '${replaceFailure ?? 'ok'}');
+    _record(
+      'a new binary can be put in place while the old one runs',
+      replaceFailure == null,
+      replaceFailure ?? 'ok',
+    );
+
+    process.kill();
+
+    // The point of all of it: what is at that path now has to RUN.
+    final replaced = await _dvm(
+      File(running.path),
+      'the replaced binary runs',
+      <String>['--version'],
+    );
+    _expect(replaced, contains: 'dvm ');
+    stdout.writeln('');
   }
 
   Future<void> _doctor(File dvm) async {
