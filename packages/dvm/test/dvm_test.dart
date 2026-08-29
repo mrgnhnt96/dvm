@@ -28,6 +28,9 @@ const List<String> commandSurface = [
 /// The two spellings the table gives as alternatives.
 const Map<String, String> commandAliases = {'ls': 'list', 'current': 'which'};
 
+/// The commands that hand every argument to the SDK, `--help` included.
+const List<String> passThroughCommands = ['dart', 'exec'];
+
 void main() {
   late MemoryFileSystem fs;
   late StringBuffer out;
@@ -87,8 +90,7 @@ void main() {
     }
   });
 
-  test('every command still to be written reports that, rather than crashing',
-      () async {
+  test('every command in the surface runs and describes itself', () async {
     final runner = DvmCommandRunner(
       DvmContext.wire(
         fileSystem: fs,
@@ -99,20 +101,66 @@ void main() {
       ),
     );
 
-    // Asking the command object whether it still carries the placeholder,
-    // rather than listing the unwritten commands here, is what keeps this test
-    // from having to be edited every time one of them becomes real.
+    var exercised = 0;
     for (final command in commandSurface) {
-      if (runner.commands[command] is! NotImplementedCommand) continue;
+      // `dvm dart` and `dvm exec` parse with `ArgParser.allowAnything()`, so
+      // `--help` is the child SDK's and never dvm's. Asking the parser which
+      // commands own the flag keeps that exception from being a list here
+      // that a later pass-through command would have to be added to.
+      final registered = runner.commands[command];
+      expect(
+        registered,
+        isNotNull,
+        reason: '`$command` is in the surface but was never registered',
+      );
+      if (!registered!.argParser.options.containsKey('help')) continue;
       out.clear();
       err.clear();
 
+      // Driven through `run`, the real entrypoint, rather than through the
+      // command object: registration is not reachability, and this is the
+      // path a user's shell actually takes.
       expect(
-        await runDvm([command]),
-        notImplementedExitCode,
-        reason: '`dvm $command` should exit $notImplementedExitCode for now',
+        await runDvm([command, '--help']),
+        0,
+        reason: '`dvm $command --help` should exit 0; stderr was: $err',
       );
-      expect(err.toString(), contains('not implemented yet'));
+      // The OUTPUT, not just the exit code: a command that is dispatched to
+      // but prints nothing is not wired up, and exits 0 either way.
+      expect(
+        out.toString(),
+        contains('dvm $command'),
+        reason: '`dvm $command --help` did not print its own usage',
+      );
+      exercised++;
+    }
+
+    // The predecessor of this test skipped every command it looped over and
+    // passed by asserting nothing. A count makes that failure loud instead.
+    expect(
+      exercised,
+      commandSurface.length - passThroughCommands.length,
+      reason: 'every command except the pass-through ones should be exercised',
+    );
+  });
+
+  test('the pass-through commands keep --help for the child SDK', () async {
+    final runner = DvmCommandRunner(
+      DvmContext.wire(
+        fileSystem: fs,
+        environment: {'HOME': '/home/dev'},
+        platformVersion: 'on "macos_arm64"',
+        out: out,
+        err: err,
+      ),
+    );
+
+    for (final command in passThroughCommands) {
+      expect(
+        runner.commands[command]!.argParser.options.containsKey('help'),
+        isFalse,
+        reason: '`dvm $command` must forward --help to the SDK, not answer it',
+      );
     }
   });
 

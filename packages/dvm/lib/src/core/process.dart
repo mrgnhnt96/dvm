@@ -1,4 +1,3 @@
-import 'exceptions.dart';
 import 'runner.dart';
 
 /// Runs the resolved SDK's binaries.
@@ -19,19 +18,3 @@ abstract class ProcessRunner {
 
 /// The seam `lib/dvm.dart` calls to get a [ProcessRunner].
 ProcessRunner createProcessRunner() => const OsProcessRunner();
-
-/// Stands in until a real [ProcessRunner] exists.
-class UnimplementedProcessRunner implements ProcessRunner {
-  const UnimplementedProcessRunner();
-
-  @override
-  Future<int> run(
-    String executable,
-    List<String> arguments, {
-    Map<String, String>? environment,
-    String? workingDirectory,
-  }) =>
-      throw const NotImplementedException(
-        'Running the resolved SDK is not implemented yet.',
-      );
-}

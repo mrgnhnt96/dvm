@@ -1,6 +1,5 @@
 import '../archive/dart_archive_client.dart';
 import 'channel.dart';
-import 'exceptions.dart';
 import 'platform.dart';
 
 /// A downloadable SDK archive and the checksum that proves it arrived intact.
@@ -67,31 +66,3 @@ abstract class ReleaseClient {
 /// The archive client is built by its own part of the CLI; this is the one
 /// line that names it, so `lib/dvm.dart` never has to.
 ReleaseClient createReleaseClient() => DartArchiveClient();
-
-/// Stands in until a real [ReleaseClient] exists.
-///
-/// Every method throws; constructing it does not, so `dvm --help` still works.
-class UnimplementedReleaseClient implements ReleaseClient {
-  const UnimplementedReleaseClient();
-
-  Never _unimplemented() => throw const NotImplementedException(
-        'Talking to the Dart release archive is not implemented yet.',
-      );
-
-  @override
-  Future<List<String>> listReleases(Channel channel) => _unimplemented();
-
-  @override
-  Future<String> latestVersion(Channel channel) => _unimplemented();
-
-  @override
-  Future<Channel> channelFor(String version) => _unimplemented();
-
-  @override
-  ReleaseArtifact artifactFor({
-    required Channel channel,
-    required String version,
-    required HostPlatform platform,
-  }) =>
-      _unimplemented();
-}

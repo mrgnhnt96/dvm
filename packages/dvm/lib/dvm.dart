@@ -31,7 +31,6 @@ import 'src/core/releases.dart';
 import 'src/core/updater.dart';
 import 'src/gen/version.dart';
 
-export 'src/commands/not_implemented.dart';
 export 'src/core/channel.dart';
 export 'src/core/config.dart';
 export 'src/core/context.dart';
@@ -157,6 +156,25 @@ class DvmCommandRunner extends CommandRunner<int> {
     if (topLevelResults.flag('version')) {
       context.out.writeln('dvm ${version()}');
       return 0;
+    }
+
+    // `--help` on a SUBcommand. [CommandRunner] hands that to the command's
+    // own `printUsage`, which writes to the process's stdout with `print` and
+    // so is the one path out of this CLI that ignores [context.out]. Answered
+    // here instead, so `dvm install --help` is as capturable as `dvm --help`
+    // already is — same usage text, just written to the sink the caller gave.
+    // `options` is asked first because `dvm dart` and `dvm exec` parse with
+    // `ArgParser.allowAnything()` and own no `--help` at all: for them the flag
+    // belongs to the child SDK and must pass straight through.
+    final subcommand = topLevelResults.command;
+    if (subcommand != null &&
+        subcommand.options.contains('help') &&
+        subcommand.flag('help')) {
+      final command = commands[subcommand.name];
+      if (command != null) {
+        context.out.writeln(command.usage);
+        return 0;
+      }
     }
 
     // Started BEFORE the command and reported after it, so the command's own
