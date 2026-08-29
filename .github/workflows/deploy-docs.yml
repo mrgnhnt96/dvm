@@ -1,6 +1,24 @@
 name: Deploy docs
 
-# Builds apps/docs (Jaspr, static mode) and publishes it to GitHub Pages.
+# Builds apps/docs (Jaspr, static mode) and publishes it to GitHub Pages when a
+# person asks it to.
+#
+# MANUAL ONLY, AND THAT IS THE DESIGN. `workflow_dispatch` is the whole trigger
+# list: the site goes live because someone opened the Actions tab, clicked "Run
+# workflow", and decided the current state of apps/docs is what the world should
+# read. Merging a docs change to main prepares that state; publishing it is a
+# separate, deliberate act.
+#
+# The tradeoff, written down so nobody has to rediscover it: it is possible to
+# merge a docs fix and forget to deploy it, leaving the published site behind
+# main until someone notices. That is the accepted cost of the guarantee on the
+# other side, which is that nothing reaches readers unreviewed. If you are here
+# to add a `push:` trigger so docs deploy themselves, this paragraph is the
+# decision you would be reversing.
+#
+# One consequence of running by hand: a deploy publishes whatever ref you picked
+# in the dispatch, so pick `main` unless you specifically mean to publish
+# something else.
 #
 # The site is served at https://mrgnhnt.com/dvm/ — a PROJECT site under the
 # account's custom domain, so everything lives under the `/dvm/` path. That is
@@ -18,14 +36,6 @@ name: Deploy docs
 # config is already `workflow`, which is what deploy-pages requires.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/docs/**'
-      # The subpath rewriter is part of what gets published, so a change to it
-      # has to redeploy even when no page changed.
-      - 'tool/rebase_static_site.dart'
-      - '.github/workflows/deploy-docs.yml'
   workflow_dispatch: {}
 
 # What actions/deploy-pages needs, and nothing more.
