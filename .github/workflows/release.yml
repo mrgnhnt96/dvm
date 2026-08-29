@@ -1,16 +1,29 @@
 name: Release
 
+# MANUAL ONLY, AND THAT IS THE DESIGN. This workflow runs when a person opens
+# the Actions tab and clicks "Run workflow". Nothing here fires on its own, so a
+# release goes out only after someone has looked at what is about to go out and
+# decided it should.
+#
+# The tradeoff, written down so nobody has to rediscover it: pushing a tag
+# publishes nothing, which means it is possible to tag a commit, walk away, and
+# find weeks later that no release was ever cut. That is the accepted cost of
+# the guarantee on the other side, which is that every published binary was
+# released by a human who chose to release it. If you are here to add `push:`
+# back so releases happen automatically, this paragraph is the decision you
+# would be reversing.
 on:
-  # The happy path: bump `version:` in packages/dvm/pubspec.yaml, commit, tag
-  # the commit `v<that same version>`, push the tag. tool/stamp_version.sh
-  # refuses if the tag and the pubspec disagree, so a tag alone cannot publish
-  # a binary that lies about its version.
-  push:
-    tags: ['v*']
-
-  # The other door, and it does not publish by default. A dispatch with no
-  # inputs builds and packages everything and uploads the assets as workflow
-  # artifacts, which is how you exercise this file without cutting a release.
+  # A dispatch with no inputs is a DRY RUN: it builds, packages and checksums
+  # every asset and uploads them to the run, which is how you exercise this file
+  # end to end without cutting a release.
+  #
+  # To publish, fill in `tag` — it must already exist and already be pushed,
+  # because `gh release create --verify-tag` below refuses otherwise — and tick
+  # `publish`. The happy path is still: bump `version:` in
+  # packages/dvm/pubspec.yaml, commit, tag that commit `v<the same version>`,
+  # push the tag, then come here and run this with both inputs set.
+  # tool/stamp_version.sh refuses when the tag and the pubspec disagree, so no
+  # run can publish a binary that lies about its version.
   workflow_dispatch:
     inputs:
       tag:
@@ -55,10 +68,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            tag="${GITHUB_REF_NAME}"
-            publish=true
-          elif [ -n "${INPUT_TAG}" ]; then
+          # The two inputs are the ONLY source of truth for what is built and
+          # whether it publishes. A branch used to sit here that read
+          # GITHUB_REF_TYPE and set publish=true whenever the run's ref was a
+          # tag. That was right while a tag push was a trigger, and it is a trap
+          # now that it is not: the "Run workflow" ref picker offers tags as well
+          # as branches, so choosing one would have published a release with
+          # `publish` still sitting at its default of false. Publishing is
+          # something you tick, never something a ref implies.
+          if [ -n "${INPUT_TAG}" ]; then
             tag="${INPUT_TAG}"
             publish="${INPUT_PUBLISH}"
           else
@@ -97,7 +115,7 @@ jobs:
       - name: Check the tag against the pubspec
         run: bash tool/stamp_version.sh "${{ steps.resolve.outputs.version }}"
 
-  # A tag must not be able to publish a red tree. This is the same set of
+  # A dispatch must not be able to publish a red tree. This is the same set of
   # checks test.yml runs; it is repeated rather than reached through
   # `workflow_run` because a release has to know the answer for THIS commit,
   # and `workflow_run` only tells you that some run of Test finished.
