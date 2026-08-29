@@ -1,0 +1,105 @@
+name: Deploy docs
+
+# Builds apps/docs (Jaspr, static mode) and publishes it to GitHub Pages.
+#
+# The site is served at https://mrgnhnt.com/dvm/ — a PROJECT site under the
+# account's custom domain, so everything lives under the `/dvm/` path. That is
+# what the "Rebase onto the /dvm/ subpath" step below is for; see
+# tool/rebase_static_site.dart for why a static jaspr build cannot emit those
+# URLs itself.
+#
+# No CNAME file is written. The custom domain comes from the ACCOUNT-level Pages
+# configuration, not from this repository — `gh api repos/mrgnhnt96/dvm/pages`
+# reports the live value, and adding a CNAME here would not be what serves it.
+#
+# This uses actions/deploy-pages directly, rather than pushing build output to a
+# second repository: GitHub allows one Pages site per repository and this repo's
+# one is unspent, so none of that machinery is needed. `build_type` on the Pages
+# config is already `workflow`, which is what deploy-pages requires.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/docs/**'
+      # The subpath rewriter is part of what gets published, so a change to it
+      # has to redeploy even when no page changed.
+      - 'tool/rebase_static_site.dart'
+      - '.github/workflows/deploy-docs.yml'
+  workflow_dispatch: {}
+
+# What actions/deploy-pages needs, and nothing more.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and do not cancel one midway — a half-uploaded artifact
+# is a half-deployed site.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      # From the REPO ROOT, not from apps/docs. The root pubspec declares a pub
+      # workspace, and a workspace member cannot resolve on its own — `dart pub
+      # get` inside apps/docs fails outright.
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Build docs
+        working-directory: apps/docs
+        run: dart run jaspr_cli:jaspr build
+
+      # A static jaspr build has no request to derive a base path from, so it
+      # emits `<base href="/">` and root-absolute references and assumes it owns
+      # the domain root. Under /dvm/ every one of those is a 404 — and a silent
+      # one: the pages render fine and the links simply do not resolve.
+      #
+      # The script exits non-zero if it rewrote nothing, so a build that stopped
+      # emitting references fails here rather than deploying an inert site.
+      - name: Rebase onto the /dvm/ subpath
+        run: dart run tool/rebase_static_site.dart --prefix /dvm apps/docs/build/jaspr
+
+      # jaspr leaves its own build bookkeeping inside the output directory; it
+      # is not part of the site and there is no reason to publish it.
+      - name: Strip build bookkeeping from output
+        working-directory: apps/docs/build/jaspr
+        run: rm -rf .dart_tool
+
+      # REQUIRED, not boilerplate. Pages runs Jekyll by default, and Jekyll
+      # silently drops paths whose names begin with an underscore. This output
+      # contains real, load-bearing ones — packages/_fe_analyzer_shared and
+      # packages/jaspr_content/components/_internal among them — so without this
+      # the site deploys with pieces missing rather than failing loudly.
+      - name: Disable Jekyll processing
+        working-directory: apps/docs/build/jaspr
+        run: touch .nojekyll
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/docs/build/jaspr
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -91,10 +91,45 @@
 "install.sh":
   - "sh -n install.sh"
 
+# The docs site. The slot the `unchecked-ok` note below reserved.
+#
+# DIVERGENCE FROM CI, stated rather than left to be discovered: nothing in
+# .github/workflows/test.yml runs these today — that workflow tests packages/dvm
+# and install.sh only, and deploy-docs.yml builds the site but runs on pushes to
+# main, after review. So this gate is currently STRICTER than CI: a docs change
+# that breaks the build is caught here and not by a PR check. Closing that gap
+# means adding a docs job to test.yml, which is a different file and a different
+# owner.
+#
+# `cd apps/docs && dart test` is minutes, not seconds: it runs a real
+# `jaspr build` and then serves the output under /dvm/. That is deliberate — the
+# failure mode this site has is a silent 404 under the path prefix, and nothing
+# short of serving it catches that.
+"apps/docs/**":
+  - "dart pub get && dart analyze"
+  - "dart format --output=none --set-exit-if-changed apps/docs"
+  - "cd apps/docs && dart test"
+
+# The subpath rewriter is published as part of the site, so its consumer is the
+# built output — not its own unit tests. Both run.
+"tool/rebase_static_site.dart":
+  - "dart analyze tool/rebase_static_site.dart"
+  - "dart format --output=none --set-exit-if-changed tool test"
+  - "dart test test/rebase_static_site_test.dart"
+  - "cd apps/docs && dart test test/build_smoke_test.dart"
+
+# The workspace root's own test directory, which is where the rewriter's unit
+# tests live.
+"test/**":
+  - "dart format --output=none --set-exit-if-changed test"
+  - "dart test"
+
 unchecked-ok:
-  # Prose. Wrong content here is a review problem, not something a command can
-  # decide. The docs SITE (apps/docs) gets real rules when that leaf lands, and
-  # this entry must NOT be widened to cover it.
+  # Prose at the repo root. Wrong content here is a review problem, not
+  # something a command can decide. This is the ROOT-level glob only: the docs
+  # site's own markdown under apps/docs/content is covered by the "apps/docs/**"
+  # rule above, where check_links.dart and navigation_test.dart really can fail
+  # on it. Do NOT widen this to `**/*.md`.
   - "*.md"
   # The harnesses' own state and rule files. game_loop verifies its own
   # integrity at spawn, and re-checking it from inside itself proves nothing.
