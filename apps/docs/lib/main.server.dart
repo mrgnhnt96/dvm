@@ -126,6 +126,17 @@ final class DvmDocsLayout extends DocsLayout {
   @override
   Iterable<Component> buildHead(Page page) sync* {
     yield* super.buildHead(page);
+    // Root-absolute, like every other reference on the site;
+    // `tool/rebase_static_site.dart` prefixes it at build time. That script
+    // rewrites URL-bearing attributes on ANY tag rather than on a list of known
+    // elements, so a `<link rel="icon" href="/...">` is prefixed the same way
+    // the header logo is — `build_smoke_test.dart` fetches every `href` on a
+    // page served under the prefix, so this one is checked rather than assumed.
+    //
+    // Yielded here rather than set through jaspr_content's own `favicon` site
+    // key, because `PageLayoutBase.buildHead` hardcodes `type: 'image/png'` on
+    // the link it emits, which is the wrong MIME type for an SVG icon.
+    yield link(rel: 'icon', type: 'image/svg+xml', href: '/images/favicon.svg');
     yield Style(styles: _styles);
   }
 
