@@ -2,7 +2,6 @@ import 'package:file/file.dart';
 
 import '../archive/sdk_installer.dart';
 import 'channel.dart';
-import 'exceptions.dart';
 import 'paths.dart';
 import 'platform.dart';
 import 'releases.dart';
@@ -52,23 +51,3 @@ Installer createInstaller({
       progress: progress,
       progressIsTerminal: progressIsTerminal,
     );
-
-/// Stands in until a real [Installer] exists.
-class UnimplementedInstaller implements Installer {
-  const UnimplementedInstaller();
-
-  Never _unimplemented() => throw const NotImplementedException(
-        'Installing SDKs is not implemented yet.',
-      );
-
-  @override
-  bool isInstalled(String version) => _unimplemented();
-
-  @override
-  Future<Directory> install(
-    String version, {
-    Channel? channel,
-    bool force = false,
-  }) =>
-      _unimplemented();
-}

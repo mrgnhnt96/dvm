@@ -49,9 +49,3 @@ class SdkNotInstalledException extends DvmException {
 class UnsupportedPlatformException extends DvmException {
   const UnsupportedPlatformException(super.message);
 }
-
-/// A seam whose implementation belongs to a part of the CLI that is not built
-/// yet. Thrown by the placeholder returned from the `create*` factories.
-class NotImplementedException extends DvmException {
-  const NotImplementedException(super.message);
-}

@@ -2,7 +2,7 @@
 /// pages out of it.
 ///
 /// The second half is the point of this file. The site is published at
-/// `https://mrgnhnt96.github.io/dvm/`, a GitHub Pages PROJECT site, so every
+/// `https://mrgnhnt.com/dvm/`, a GitHub Pages PROJECT site, so every
 /// URL lives under `/dvm/` — but jaspr's static build has no request to derive
 /// a base path from and emits `<base href="/">` plus root-absolute references.
 /// `tool/rebase_static_site.dart` rewrites them afterwards, and the failure

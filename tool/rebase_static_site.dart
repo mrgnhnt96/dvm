@@ -6,7 +6,7 @@
 ///
 /// ## Why this exists
 ///
-/// The docs site is published at `https://mrgnhnt96.github.io/dvm/`, a GitHub
+/// The docs site is published at `https://mrgnhnt.com/dvm/`, a GitHub
 /// Pages PROJECT site, so every URL on it lives under `/dvm/`.
 ///
 /// Jaspr resolves its base path from the incoming request at runtime
