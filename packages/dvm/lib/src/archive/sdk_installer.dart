@@ -26,12 +26,14 @@ class SdkInstaller implements Installer {
     required this.releases,
     required HostPlatform Function() hostPlatform,
     required StringSink progress,
+    bool progressIsTerminal = false,
     http.Client? httpClient,
     SdkDownloader? downloader,
     SdkExtractor? extractor,
     ModeApplier? modeApplier,
   })  : _hostPlatform = hostPlatform,
         _progress = progress,
+        _progressIsTerminal = progressIsTerminal,
         _injectedDownloader = downloader,
         _httpClient = httpClient,
         _extractor = extractor ?? const ZipSdkExtractor(),
@@ -43,6 +45,7 @@ class SdkInstaller implements Installer {
 
   final HostPlatform Function() _hostPlatform;
   final StringSink _progress;
+  final bool _progressIsTerminal;
   final SdkExtractor _extractor;
   final ModeApplier _modeApplier;
   final SdkDownloader? _injectedDownloader;
@@ -53,6 +56,7 @@ class SdkInstaller implements Installer {
       SdkDownloader(
         fileSystem: fileSystem,
         progress: _progress,
+        progressIsTerminal: _progressIsTerminal,
         httpClient: _httpClient,
       );
 

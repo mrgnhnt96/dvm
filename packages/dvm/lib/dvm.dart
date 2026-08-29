@@ -60,6 +60,7 @@ Future<int> run(
   String? platformVersion,
   StringSink? out,
   StringSink? err,
+  bool? outIsTerminal,
   ReleaseClient? releases,
   Installer? installer,
   ProcessRunner? processes,
@@ -68,6 +69,11 @@ Future<int> run(
 }) async {
   final output = out ?? stdout;
   final errors = err ?? stderr;
+  // Asked here and nowhere else: this is the only place that knows whether
+  // [output] is the process's own stdout. An injected sink belongs to the
+  // caller and is never assumed to be a terminal, so the default a test sees
+  // is the one CI sees.
+  final terminal = outIsTerminal ?? (out == null && stdout.hasTerminal);
 
   final context = DvmContext.wire(
     fileSystem: fileSystem ?? const LocalFileSystem(),
@@ -75,6 +81,7 @@ Future<int> run(
     platformVersion: platformVersion ?? Platform.version,
     out: output,
     err: errors,
+    outIsTerminal: terminal,
     // `resolvedExecutable`, not `executable`: the latter can be a bare name
     // found on PATH, and `dvm update` has to rename over a real path.
     executablePath: executablePath ?? Platform.resolvedExecutable,

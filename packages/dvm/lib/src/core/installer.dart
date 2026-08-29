@@ -42,6 +42,7 @@ Installer createInstaller({
   required ReleaseClient releases,
   required HostPlatform Function() hostPlatform,
   required StringSink progress,
+  required bool progressIsTerminal,
 }) =>
     SdkInstaller(
       fileSystem: fileSystem,
@@ -49,6 +50,7 @@ Installer createInstaller({
       releases: releases,
       hostPlatform: hostPlatform,
       progress: progress,
+      progressIsTerminal: progressIsTerminal,
     );
 
 /// Stands in until a real [Installer] exists.
