@@ -28,7 +28,7 @@ Installed Dart SDKs in /Users/you/.dvm/versions:
 
 ## Reading the output
 
-The `*` marks the version this directory resolves to. The line under the list says **which rule** produced that answer, in the same words [`dvm which`](/commands/which) uses — the two commands never describe one resolution in two different vocabularies.
+The `*` marks the version this directory resolves to. The line under the list says **which rule** produced that answer, in the same words [`dvm which`](/commands/which) uses — one resolution, one vocabulary, whichever command you asked.
 
 Each row carries every name that resolves to it:
 
@@ -40,31 +40,31 @@ Each row carries every name that resolves to it:
 | `alias: work` | An [alias](/versions/aliases) that resolves here. |
 | `BROKEN: no bin/dart` | The directory exists but has no `dart` executable in it. |
 
-## Directories that are not usable SDKs
+## Entries marked BROKEN
 
-They are **listed rather than hidden**. A half-removed version taking up several hundred megabytes of disk is something you came here to find out about. It is marked `BROKEN: no bin/dart`, and the fix is `dvm remove <version> --force` followed by a fresh `dvm install`.
+A directory in `versions/` with no `dart` executable in it is **listed and marked**, because several hundred megabytes of half-removed SDK is exactly what you came here to find out about. The fix is `dvm remove <version> --force` followed by a fresh `dvm install`.
 
 Names that are not semver sort after the ones that are, by name — that covers the Dart 1 build numbers the archive still carries, and anything you dropped into `versions/` by hand.
 
-## When nothing resolves
+## When the SDK is outside this list
 
-If the current directory resolves to nothing, or falls through to a `dart` that dvm does not manage, the summary line says so instead of marking a row:
+When this directory falls through to a `dart` from your `PATH`, or no rule applies at all, the summary line says which and leaves every row unmarked:
 
 ```text
 * none of these: /Users/you/scratch falls through to /opt/homebrew/bin/dart on PATH (rule 4 of 5).
 ```
 
-## A global default that is not installed
+## A global default that needs installing
 
-dvm writes a warning to **stderr** if `global` names something missing:
+dvm writes a warning to **stderr** when `global` names a version you do not have:
 
 ```text
 The global default names 3.9.0, which is not installed. Run: dvm install 3.9.0
 ```
 
-This is not hypothetical — it is what [`dvm remove --force`](/commands/remove) leaves behind, and every command run outside a pinned project fails until it is fixed.
+This is the state [`dvm remove --force`](/commands/remove) can leave behind, and it is worth fixing straight away: the global default applies to every command run outside a pinned project.
 
-## Empty
+## Before you install anything
 
 ```text
 No Dart SDKs are installed in /Users/you/.dvm/versions.

@@ -40,7 +40,7 @@ dvm alias work 3.14.0
   Dart 3.14.0 is not installed. Run: dvm install 3.14.0
 ```
 
-Pointing an alias at an SDK you have not installed is **allowed** — you may reasonably write the alias before the download — but dvm says so, rather than letting you find out the next time you `cd` into a project.
+An alias may point at an SDK you have not installed — writing the alias before the download is a reasonable thing to do — and dvm tells you right then, with the command that fills the gap.
 
 ## Listing
 
@@ -62,9 +62,9 @@ The chain is shown when there is one. Channels are listed alongside because they
 
 Plain `dvm alias` with no arguments does the same thing as `dvm alias list`.
 
-## Names dvm refuses
+## Names dvm reserves
 
-| Rejected | Why |
+| Reserved | What it already means |
 | --- | --- |
 | `stable`, `beta`, `dev` | Channel names. Resolution checks channels before aliases, so such an alias would be silently unreachable. |
 | Anything that looks like a version | dvm could not tell the alias from the version. |
@@ -72,11 +72,11 @@ Plain `dvm alias` with no arguments does the same thing as `dvm alias list`.
 | A leading `-` | It reads as an option. |
 | Whitespace or `/` or `\` | A name is a single word. |
 
-Each of these is refused up front with a message, because the alternative is a name sitting in your config that quietly does nothing.
+dvm says so at the moment you try, which is what keeps every name in your config a name that resolves.
 
 ## Chains and loops
 
-An alias may point at another alias or at a channel, and dvm follows the chain up to eight hops. It refuses to create a loop — including pointing an alias at itself — because a loop resolves to nothing and the error would surface far away from the command that caused it.
+An alias may point at another alias or at a channel, and dvm follows the chain up to eight hops. A loop — including an alias pointing at itself — is reported at the command that would create it, rather than at the `cd` that would have met it later.
 
 ## See also
 

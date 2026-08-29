@@ -13,15 +13,15 @@ Moves the SDKs an older `cbracken/dvm` install already downloaded into the layou
 
 | Flag | Effect |
 | --- | --- |
-| `--dry-run` | Print everything that would move and everything a later `--clean` would delete. Changes nothing. |
-| `--clean` | Remove the older tool's own files, once its SDKs have been migrated. Never happens as part of a plain `dvm migrate`. |
+| `--dry-run` | Print everything that would move and everything a later `--clean` would delete. Reports only. |
+| `--clean` | Remove the older tool's own files, once its SDKs have been migrated. Always a step of its own. |
 | `-y`, `--yes` | Answer yes to the questions this command would ask. |
 
 ## What it does
 
 Both tools live in `~/.dvm`. The older one keeps its SDKs in `~/.dvm/darts/<version>`, extracted, in exactly the shape this dvm keeps them in `~/.dvm/versions/<version>`.
 
-So migration is a **move**, not a download. Nobody should have to re-fetch several hundred megabytes of SDK they already have on disk.
+So migration is a **move**: several hundred megabytes of SDK you already have get relocated on disk rather than downloaded again.
 
 ```sh
 dvm migrate
@@ -40,13 +40,13 @@ Moving 3 SDKs from darts/ to versions/...
 Remove them with: dvm migrate --clean
 ```
 
-## The hazard it is written around
+## How your SDKs stay safe
 
-Those directories may be your only copy of those SDKs. So:
+Those directories may be your only copy of those SDKs, so the command is built around keeping them:
 
 - the move happens **before** anything is deleted,
-- a version already present in `versions/` is **skipped**, never overwritten,
-- a move is only reported as done once the destination is verified,
+- a version already present in `versions/` is **skipped**, so what you have stays what you have,
+- a move is reported as done once the destination is verified,
 - deleting the older tool's own files is a **separate `--clean` run** that has to be asked for and then confirmed.
 
 Run `--dry-run` first if you want to see the whole plan before anything moves.
@@ -59,16 +59,16 @@ dvm migrate --clean
 
 Removes the older tool's `scripts/`, `environments/` and its git checkout. It asks for confirmation; `--yes` answers for you, for scripted use.
 
-It is a separate step on purpose. Migration and deletion failing together would be much worse than migration succeeding and deletion waiting for you.
+It is a separate step on purpose, so a migration that succeeded stays succeeded while the deletion waits for you.
 
-## Nothing to migrate
+## On a machine with only this dvm
 
 ```text
 Nothing to migrate: no older dvm (cbracken/dvm) install in /Users/you/.dvm.
 That directory would have a scripts/dvm and a darts/ in it.
 ```
 
-Exit code 0 — there was nothing to do, which is not an error.
+Exit code 0: there was nothing to do, and that is a success.
 
 ## See also
 

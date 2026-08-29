@@ -3,7 +3,7 @@ title: The Shim and Your PATH
 description: What `dvm setup` writes, why it has to be first on PATH, and the shell function that silently defeats it.
 ---
 
-The shim is what makes dvm invisible. Without it you would have to type `dvm dart` instead of `dart`, and — much worse — every tool that spawns `dart` behind your back would still get the wrong SDK.
+The shim is what makes dvm invisible. With it on your `PATH`, plain `dart` follows your pins — and so does every tool that spawns `dart` behind your back.
 
 ## What the shim is
 
@@ -16,7 +16,7 @@ exec /Users/you/.dvm/bin/dvm exec dart "$@"
 
 On Windows it is a `.bat` doing the same thing.
 
-That is the whole mechanism. `exec` **replaces** the shell process rather than spawning a child, so the only cost of the indirection is starting `/bin/sh` plus dvm's own AOT startup — and then the real `dart` inherits the terminal, the exit code, and the signals directly. Nothing sits between you and the SDK copying bytes.
+That is the whole mechanism. `exec` **replaces** the shell process rather than spawning a child, so the only cost of the indirection is starting `/bin/sh` plus dvm's own AOT startup — and then the real `dart` inherits the terminal, the exit code, and the signals directly. From there on you are talking to the SDK.
 
 ```sh
 dvm setup
@@ -33,13 +33,11 @@ Add this to ~/.zshrc:
 Then check it with: dvm doctor
 ```
 
-## Why dvm does not edit your shell profile
+## Adding the PATH line
 
-`dvm setup` prints the line and stops. It will not write it to `.zshrc` for you.
+`dvm setup` prints the exact line and names the file it belongs in, so the change to your login shell stays yours to make. The right file differs between shells, between login and non-login setups, and between hand-managed profiles, and you are the one who knows which of those you have.
 
-A version manager that rewrites your login shell's startup file behind your back is one people stop trusting — and the correct line differs enough between shells, login versus non-login setups, and hand-managed profiles that getting it wrong does not produce a warning, it produces a shell that will not start.
-
-Add it yourself, to whichever file your shell actually reads:
+Add it to whichever file your shell actually reads:
 
 | Shell | File |
 | --- | --- |
@@ -49,11 +47,11 @@ Add it yourself, to whichever file your shell actually reads:
 
 Then start a **new** shell. Editing the file does not change the environment of the one you are in.
 
-## Why "first" is not the same as "on"
+## Why the shims directory goes first
 
-The shims directory has to come **before** anything else on `PATH` that supplies a `dart`.
+`PATH` is searched left to right and the first match wins, so `~/.dvm/shims` belongs **ahead of** every other directory that supplies a `dart`.
 
-`PATH` is searched left to right and the first match wins. If Homebrew's `dart`, or a Flutter SDK's bundled `dart`, or `/usr/local/bin/dart` appears earlier in the list, that binary is found first and the shim is never reached. Your pins do nothing, and there is no error message — the symptom is `dart --version` reporting a version you did not ask for, with everything else apparently correct.
+That position is the whole of it. If Homebrew's `dart`, or a Flutter SDK's bundled `dart`, or `/usr/local/bin/dart` appears earlier in the list, that binary is found first and the shim is never reached. Your pins do nothing, and there is no error message — the symptom is `dart --version` reporting a version you did not ask for, with everything else apparently correct.
 
 [`dvm doctor`](/commands/doctor) checks exactly this, and reports the offending entry by path:
 
@@ -95,9 +93,9 @@ dvm which       # => the SDK that resolves here, and which rule chose it
 
 If `which dart` reports anything other than the shim, `PATH` order is the problem.
 
-## What the shim does not cover
+## Other commands, with the pinned SDK
 
-The shim is `dart` only. To run some *other* command with the pinned SDK first on its `PATH` — `melos`, a build script, your own tooling — use [`dvm exec`](/commands/exec):
+The shim covers `dart`. For any other command that should run with the pinned SDK first on its `PATH` — `melos`, a build script, your own tooling — use [`dvm exec`](/commands/exec):
 
 ```sh
 dvm exec melos bootstrap

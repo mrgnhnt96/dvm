@@ -52,11 +52,11 @@ Channels, as recorded by dvm install:
   stable -> 3.13.2
 ```
 
-### What an alias may not be called
+### Names dvm reserves
 
-dvm refuses some names up front, because the alternative is a name in your config that silently does nothing:
+Some names already mean something to dvm, so it says so as you define one — which is what keeps every name in your config a name that resolves:
 
-| Rejected | Why |
+| Reserved | What it already means |
 | --- | --- |
 | `stable`, `beta`, `dev` | Channel names. Resolution checks channels *before* aliases, so an alias with one of these names would be unreachable. |
 | Anything that looks like a version | dvm would have no way to tell `3.9` the alias from `3.9` the version. |
@@ -64,9 +64,9 @@ dvm refuses some names up front, because the alternative is a name in your confi
 | Anything starting with `-` | It reads as an option. |
 | Anything with whitespace or a path separator | A name is a single word. |
 
-An alias may point at another alias, and dvm follows the chain (up to eight hops). It refuses to create a loop, and refuses to point an alias at itself.
+An alias may point at another alias, and dvm follows the chain up to eight hops. A loop — including an alias pointing at itself — is reported at the command that would create it.
 
-An alias that names a version you have not installed yet is **allowed** — you may reasonably write the alias first — but dvm says so rather than letting you discover it later:
+An alias may name a version you have not installed yet — writing the alias first is a reasonable thing to do — and dvm tells you right then, with the command that fills the gap:
 
 ```text
 "next" now means 3.14.0.
@@ -77,7 +77,7 @@ Remove one with [`dvm unalias`](/commands/unalias). That deletes the name only; 
 
 ## Channels
 
-`stable`, `beta` and `dev` are Dart's release channels. They are not aliases and you do not define them.
+`stable`, `beta` and `dev` are Dart's release channels. dvm knows all three already, so you name one and it does the rest.
 
 When you run `dvm install stable`, dvm asks the Dart archive what `stable` currently is, installs it, and **writes down the answer** in `~/.dvm/config.json`:
 
@@ -89,23 +89,23 @@ When you run `dvm install stable`, dvm asks the Dart archive what `stable` curre
 
 From then on, a pin of `stable` means 3.13.2 on this machine — until you run `dvm install stable` again.
 
-## Why a channel is never re-resolved during resolution
+## What a channel name means on your machine
 
 This is the design decision that shapes the whole tool.
 
-Version resolution runs on **every single `dart` invocation on the machine** once the shim is installed. It is allowed to read a couple of small files and nothing else. If `stable` were re-resolved against the network each time, every `dart --version` would make an HTTPS request to a Google Cloud Storage bucket — so `dart` would be slow, would behave differently on a plane, and would break entirely behind a firewall.
+Version resolution runs on **every single `dart` invocation on the machine** once the shim is installed, so it answers a channel name out of `config.json`. `stable` means the version recorded the last time you ran `dvm install stable` — the same answer at full speed, on a plane, and behind a firewall.
 
-So the network is touched at exactly two moments, both of which you asked for explicitly:
+The network is reached at exactly two moments, both of which you ask for by name:
 
 - `dvm install <channel>` — asks what the channel means now, and records it.
 - [`dvm list-remote`](/commands/list-remote) — lists what is available.
 
 Everything else reads `config.json`.
 
-The practical consequence: **`stable` moving upstream does not move your SDK.** You get the new one when you run `dvm install stable`, and not before. If you want that, run it; if you want reproducibility, pin a concrete version instead.
+The practical consequence: **your `stable` moves when you move it.** Run `dvm install stable` to take the newest one. For a repository other people build, pin a concrete version, so everyone gets the same SDK.
 
 <Callout type="info">
-`dvm use stable` fails with "no stable SDK has been installed, so dvm does not know which version that is" if you have never run `dvm install stable`. That is the same rule seen from the other side — there is nothing recorded to resolve.
+`dvm use stable` reads that same record. Before your first `dvm install stable` it says `dvm does not know which version "stable" is: no stable SDK has been installed on this machine, and resolving a channel name never goes to the network. Run: dvm install stable` — the same rule, from the side that reads it.
 </Callout>
 
 ## Aliases, channels, and versions together
@@ -122,7 +122,7 @@ So an alias may point at a channel:
 dvm alias current stable
 ```
 
-and `dvm which` reports the whole chain rather than just the answer:
+and `dvm which` reports the whole chain alongside the answer:
 
 ```text
 Chosen by rule 2 of 5: pinned by /Users/you/code/api/.dvmrc.

@@ -7,7 +7,7 @@ description: The one dvm file you commit — its format, where dvm looks for it,
 
 ## The format
 
-Canonically it is JSON, so it can grow later without breaking anything already written:
+Canonically it is JSON, which leaves room for the format to grow while everything already written keeps parsing:
 
 ```json
 { "dart": "3.9.0" }
@@ -35,7 +35,7 @@ dvm reads both. It only ever writes the JSON one, so a hand-written bare pin bec
 
 ## What a pin may contain
 
-The value is a *reference*, not necessarily a literal version. Three things are valid:
+The value is a *reference*. Three kinds are valid:
 
 | Pin | Means |
 | --- | --- |
@@ -43,7 +43,7 @@ The value is a *reference*, not necessarily a literal version. Three things are 
 | `work` | An [alias](/versions/aliases) you defined with `dvm alias work 3.9.0`. |
 | `stable` | The version that channel resolved to when you last ran `dvm install stable`. |
 
-Resolving an alias or a channel name costs no network access — aliases live in `~/.dvm/config.json`, and a channel's concrete version was written there at install time. See [Aliases and Channels](/versions/aliases) for why that matters.
+Resolving an alias or a channel name reads `~/.dvm/config.json` and stops there: aliases live in that file, and a channel's concrete version was written into it at install time. See [Aliases and Channels](/versions/aliases) for why that matters.
 
 <Callout type="warning">
 Pinning a channel name pins *your machine's* idea of what that channel means. Two people can have the same `.dvmrc` saying `stable` and be on different SDKs. For a repository other people build, pin a concrete version.
@@ -64,7 +64,7 @@ my-monorepo/
 
 `dart` in `packages/api` gets 3.9.0. `dart` in `packages/tools` gets 3.13.2. Nearest wins.
 
-`dvm use` writes to the **current directory**, never to the nearest existing `.dvmrc` above it. Running `dvm use` inside one package of a monorepo pins that package, rather than silently rewriting the pin at the repository root.
+`dvm use` writes to the **current directory**. Running it inside one package of a monorepo pins that package, and the pin at the repository root stays exactly as it was.
 
 ## The other file: `.dvm/dart_sdk`
 
@@ -76,7 +76,7 @@ Alongside `.dvmrc`, `dvm use` creates a symlink:
 
 This is for IDEs and editors that want to be handed an SDK directory rather than a `dart` on `PATH`. Point your analyzer or plugin at `.dvm/dart_sdk` and it follows the pin along with everything else.
 
-**Do not commit it.** It is an absolute path into your own home directory, so committing it breaks every other checkout. Ignore it:
+**Keep it out of version control.** It is an absolute path into your own home directory, so it means something on this machine and nowhere else. Ignore it:
 
 ```sh
 dvm use 3.9.0 --gitignore
@@ -89,9 +89,9 @@ which appends:
 .dvm/
 ```
 
-dvm only edits `.gitignore` when you pass `--gitignore`. Otherwise it says the rule is missing and moves on — editing a file you did not name, in a repository dvm does not own, is not something it does on its own.
+dvm edits `.gitignore` when you pass `--gitignore`, and otherwise names the rule it would add and leaves the file to you. The repository is yours, so the edit is yours to ask for.
 
-## A malformed pin is an error, not a fallback
+## A pin dvm cannot resolve is an error
 
 If `.dvmrc` cannot be parsed, or names something dvm cannot resolve, resolution **fails** with a message rather than quietly falling through to your [global default](/commands/global):
 
@@ -99,7 +99,7 @@ If `.dvmrc` cannot be parsed, or names something dvm cannot resolve, resolution 
 dvm: Dart 3.9.0 is pinned by /Users/you/code/api/.dvmrc, but it is not installed. Run: dvm install 3.9.0
 ```
 
-Falling back would be worse. A typo'd pin that silently runs a different SDK is a bug that shows up much later, somewhere else.
+So you always get the SDK the pin names, or a message naming the pin. A typo is reported where you made it, rather than turning up much later as a build that behaved oddly.
 
 ## Checking what applies
 

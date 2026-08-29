@@ -53,7 +53,7 @@ When the pin was a name rather than a version, the hop is spelled out:
   It says "stable", the channel that was recorded as 3.13.2 when it was last installed.
 ```
 
-## An SDK dvm does not manage
+## An SDK from your PATH
 
 Under rule 4 the SDK is whatever was already on your `PATH`:
 
@@ -64,11 +64,11 @@ SDK: /opt/homebrew/opt/dart
 This SDK is not managed by dvm. Pin one for this directory with: dvm use <version>
 ```
 
-No version is reported, because dvm did not install it and will not claim to know what it is.
+dvm reports the path and leaves the version to the SDK itself, since this is one it did not install.
 
-## When nothing resolves
+## Reaching rule 5
 
-`dvm which` fails with the same [rule 5](/versions/resolution-order) message every other command would give — a list of what was checked and what to run.
+When no rule matches, `dvm which` gives the same [rule 5](/versions/resolution-order) message every other command gives — a list of what was checked and what to run.
 
 ## See also
 

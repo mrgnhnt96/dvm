@@ -69,7 +69,7 @@ Two files were written, and the difference between them matters:
 - **`.dvmrc`** is the pin. It is two lines of JSON and you **commit it**. It is what makes the pin apply to everyone who clones the repository.
 - **`.dvm/dart_sdk`** is a symlink into your own `~/.dvm`, for IDEs that want an SDK path. It is machine-local and you **do not commit it**. `dvm use --gitignore` adds the rule for you.
 
-If the version is not installed yet, `dvm use` installs it first rather than failing.
+`dvm use` installs the version first if you do not have it yet, so one command covers both.
 
 ## 4. Watch `dart` follow the pin
 
@@ -82,7 +82,7 @@ dart --version
 # whatever applies out here — a different pin, your global default, or the system Dart
 ```
 
-Nothing was switched. The `dart` on your `PATH` is dvm's shim, and it resolves per directory on every invocation.
+The `dart` on your `PATH` is dvm's shim, and it resolves per directory on every invocation — so both answers are current, and you switched nothing.
 
 ## 5. Ask why, whenever you need to
 
@@ -97,7 +97,7 @@ Chosen by rule 2 of 5: pinned by /Users/you/code/my-project/.dvmrc.
 SDK: /Users/you/.dvm/versions/3.13.2
 ```
 
-That second-to-last line is the one to remember. dvm has [exactly five resolution rules](/versions/resolution-order), and `dvm which` always names the one that answered. When something is not the version you expected, this is the first command to run.
+That second-to-last line is the one to remember. dvm has [exactly five resolution rules](/versions/resolution-order), and `dvm which` always names the one that answered. Whenever you want to know why you got the SDK you got, this is the first command to run.
 
 ## Where to go next
 
@@ -105,7 +105,7 @@ That second-to-last line is the one to remember. dvm has [exactly five resolutio
 
 <Card title="Resolution Order" href="/versions/resolution-order" icon="pin">
 
-The five rules, in order. The page to read when dvm picks an SDK you did not expect.
+The five rules, in order. The page to read when you want to know why dvm picked the SDK it did.
 
 </Card>
 
