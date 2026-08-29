@@ -31,11 +31,20 @@
   "inject": [],
   "lanes": [
     {
+      "lane": "serialized",
+      "match": {
+        "labels": [
+          "docs"
+        ]
+      },
+      "name": "docs-build",
+      "resource": "jaspr-build-port"
+    },
+    {
       "lane": "headless",
       "match": {
         "labels": [
           "cli",
-          "docs",
           "ci",
           "test",
           "analysis"
@@ -46,7 +55,17 @@
   ],
   "lock_root": null,
   "project_name": "dvm",
-  "resources": [],
+  "resources": [
+    {
+      "match": [
+        "\\bjaspr_cli:jaspr\\s+build\\b",
+        "\\bjaspr\\s+build\\b",
+        "cd\\s+apps/docs\\s*&&\\s*dart\\s+test"
+      ],
+      "name": "jaspr-build-port",
+      "note": "Port 5567. jaspr_cli 0.23.2 hardcodes serverProxyPort='5567' in lib/src/project.dart and build_command.dart binds it unconditionally; only `jaspr dev`/`serve` expose --proxy-port, `jaspr build` has no flag for it. apps/docs/test/build_smoke_test.dart runs a real jaspr build, so it inherits that port. A git worktree does not isolate a port, so two docs Crawlers -- or one Crawler and a dev server left running in the primary checkout -- collide, and the loser dies in setUpAll with 'Address already in use, errno = 48' while the build itself reports success. Observed 2026-08-29: crawler-docs-voice was blocked at its commit gate by the orchestrator's own `jaspr serve`, diagnosed it correctly, and had no lock to take because this list was empty."
+    }
+  ],
   "scratch_root": ".showrunner/scratch",
   "shared_state": [],
   "worktree_root": ".worktrees"
