@@ -111,6 +111,7 @@ class _Smoke {
     await _version(dvm);
     await _setup(dvm);
     final installed = await _install(dvm);
+    await _unknownVersion(dvm);
     await _list(dvm);
     await _use(dvm);
     await _which(dvm);
@@ -119,6 +120,8 @@ class _Smoke {
     await _shim(dvm);
     await _replaceRunningBinary(dvm);
     await _doctor(dvm);
+    // Last of all, because it deletes the SDK every check above needs.
+    await _remove(dvm);
     if (!installed) {
       stdout.writeln(
         'NOTE: the SDK install failed, so every check after it was asking a '
@@ -486,6 +489,92 @@ class _Smoke {
     );
     _expect(replaced, contains: 'dvm ');
     stdout.writeln('');
+  }
+
+  /// The failure path: a version that is not published anywhere.
+  ///
+  /// Every other check here asks whether dvm works when handed something it
+  /// can do. This one asks what a user sees when they typo a version, which is
+  /// the more common experience and the easiest one to regress -- an unhandled
+  /// exception here would print a stack trace and exit 255, and no check that
+  /// only ever passes good input would notice.
+  ///
+  /// The unit suite covers this ground against a fake archive server. What it
+  /// cannot cover is that the REAL archive still answers 404 for an absent
+  /// version: if it ever served a friendly HTML page instead, `channelFor`
+  /// would take its non-404 branch and the message below would change without
+  /// a line of dvm changing. Costs three 404s and no download.
+  Future<void> _unknownVersion(File dvm) async {
+    const absent = '99.99.99';
+    final result = await _dvm(
+      dvm,
+      'dvm install $absent',
+      <String>['install', absent],
+      expectedExitCode: 1,
+    );
+    // Both halves, deliberately. What makes an error actionable is the
+    // sentence saying what to do next, and that is the half most likely to be
+    // lost to a well-meaning rewording of the first.
+    _expect(result, contains: 'Dart $absent is not published in any channel');
+    _expect(
+      result,
+      contains: 'Run `dvm list-remote` to see what is available.',
+    );
+    _record(
+      'dvm install $absent exits 1 rather than crashing',
+      result.exitCode == 1,
+      'exit ${result.exitCode}',
+    );
+  }
+
+  /// `dvm remove`, against a real cache directory.
+  ///
+  /// Deleting a tree in a `MemoryFileSystem` cannot fail the way deleting a
+  /// real one can. This SDK was extracted from an archive and then EXECUTED a
+  /// few checks ago, so on Windows the question is whether anything still
+  /// holds a handle on a binary that just ran -- which is precisely the case a
+  /// memory filesystem has no way to represent.
+  Future<void> _remove(File dvm) async {
+    final result = await _dvm(
+      dvm,
+      'dvm remove $sdkVersion',
+      <String>['remove', sdkVersion],
+      workingDirectory: project.path,
+    );
+    _expect(result, contains: 'Removed Dart $sdkVersion');
+
+    // A `.dvmrc` is project data, not machine state, so it never blocks the
+    // removal -- but the user is about to hit an error in this very directory,
+    // and hearing it from the command that caused it is part of the contract.
+    _expect(result, contains: 'pins the version just removed');
+
+    // Really gone, not merely reported gone. `remove` printing its success
+    // line is an assertion about dvm's control flow; this is one about disk.
+    final versionDir = Directory(
+      <String>[
+        dvmHome.path,
+        'versions',
+        sdkVersion,
+      ].join(Platform.pathSeparator),
+    );
+    _record(
+      'the SDK directory is gone from the cache',
+      !versionDir.existsSync(),
+      versionDir.existsSync() ? 'still at ${versionDir.path}' : 'gone',
+    );
+
+    // And dvm agrees with the disk. A delete that left dvm still offering the
+    // version would pass the check above and strand the next `dvm use`.
+    final list = await _dvm(
+      dvm,
+      'dvm list, after the remove',
+      <String>['list'],
+    );
+    _record(
+      'dvm list no longer offers $sdkVersion',
+      !list.output.contains(sdkVersion),
+      list.output.trim().isEmpty ? '(printed nothing)' : list.output.trim(),
+    );
   }
 
   Future<void> _doctor(File dvm) async {
