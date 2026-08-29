@@ -39,7 +39,7 @@ The script covers Linux and macOS. On Windows, download `dvm-windows-x64.zip` fr
 Three things have to hold before anything lands on disk, and the script names whichever one stopped it — so a run that finishes leaves you a working dvm:
 
 - a published binary exists for your operating system and CPU architecture,
-- the release asset is reachable (the GitHub API allows 60 unauthenticated requests per hour per IP — set `GITHUB_TOKEN` and retry if you meet that limit),
+- the release asset is reachable (the GitHub API serves 60 requests an hour to each IP address, so a shared or busy address may need a short wait),
 - the downloaded archive's SHA-256 matches the `.sha256` published alongside it.
 
 ### Environment variables
@@ -48,7 +48,6 @@ Three things have to hold before anything lands on disk, and the script names wh
 | --- | --- |
 | `DVM_VERSION` | Install this version instead of the newest release. `0.2.0` and `v0.2.0` both work. |
 | `DVM_HOME` | Install under this directory instead of `~/.dvm`. |
-| `GITHUB_TOKEN` | Used for the release lookup if set. Raises the API rate limit. |
 
 ```sh
 # pin the installer itself, e.g. in a Dockerfile
