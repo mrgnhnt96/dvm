@@ -170,7 +170,7 @@ class DoctorCommand extends Command<int> {
           summary: '${shims.path} is not on PATH, so `dart` does not go '
               'through dvm.',
           details: order(),
-          remedy: 'Add it to your shell startup file: $line',
+          remedy: '${shell.pathLineAction}: $line',
         ),
       ];
     }

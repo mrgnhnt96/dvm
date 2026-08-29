@@ -27,15 +27,27 @@ import 'resolver.dart';
 class OsProcessRunner implements ProcessRunner {
   const OsProcessRunner();
 
-  /// The signals a wrapper is expected to pass on.
+  /// The signals a wrapper is expected to pass on, on THIS platform.
   ///
   /// SIGKILL is deliberately absent: it cannot be caught, so there is nothing
-  /// to forward. Windows supports watching neither of these the way POSIX does,
-  /// which [_forward] handles by simply not installing a handler.
-  static const List<ProcessSignal> _signals = [
-    ProcessSignal.sigint,
-    ProcessSignal.sigterm,
-  ];
+  /// to forward.
+  ///
+  /// SIGTERM is absent on Windows, and asking for it there is not a harmless
+  /// no-op. `ProcessSignal.sigterm.watch()` fails with "The request is not
+  /// supported", and the [SignalException] below never catches it: dart:io
+  /// runs the stream's onListen through the zone, so the failure arrives as an
+  /// UNHANDLED ASYNCHRONOUS error rather than a throw at the call site. The
+  /// observed effect on windows-latest was that `dvm dart --version` printed
+  /// the SDK's answer, then printed `Unhandled exception: SignalException` and
+  /// exited 255 — so every `dart` on the machine ran correctly and reported the
+  /// wrong exit code, which is the one failure mode a launcher must not have.
+  ///
+  /// Asked per platform rather than filtered by catching, because a handler
+  /// that cannot be installed is a fact about the OS and is known before the
+  /// attempt.
+  static List<ProcessSignal> get _signals => Platform.isWindows
+      ? const [ProcessSignal.sigint]
+      : const [ProcessSignal.sigint, ProcessSignal.sigterm];
 
   @override
   Future<int> run(
@@ -89,8 +101,10 @@ class OsProcessRunner implements ProcessRunner {
         }
       });
     } on SignalException {
-      // This platform cannot watch this signal — Windows only supports a
-      // subset. Forwarding what we can beats refusing to run.
+      // Kept as a backstop for a platform that refuses a signal [_signals]
+      // expects to work — a container with a restricted seccomp profile, say.
+      // It is NOT what handles Windows: see [_signals] for why a catch here
+      // cannot see that one.
       return null;
     }
   }

@@ -122,6 +122,23 @@ class SetupCommand extends Command<int> {
     final line = shell.pathLine(context.paths.shimsDir);
     final rcFile = shell.primaryRcFile;
 
+    if (shell.kind == ShellKind.powershell) {
+      context.out
+        ..writeln('${shell.pathLineAction}:')
+        ..writeln()
+        ..writeln('  $line')
+        ..writeln()
+        ..writeln('That edits your user PATH, so it survives a reboot. It has '
+            'to go ahead of anything else that puts a dart on PATH, and it '
+            'only takes effect in terminals opened after you run it.')
+        ..writeln()
+        ..writeln('For the terminal you are in right now:')
+        ..writeln()
+        ..writeln('  \$env:Path = '
+            "'${context.paths.shimsDir.path};' + \$env:Path");
+      return;
+    }
+
     if (rcFile == null) {
       // No HOME and no USERPROFILE: a container, or a hand-built environment.
       // There is no file to name, but the line is still the answer.

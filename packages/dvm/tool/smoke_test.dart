@@ -234,6 +234,22 @@ class _Smoke {
       linked.existsSync(),
       linked.existsSync() ? linked.path : 'nothing at ${linked.path}',
     );
+
+    // Again, over the link that is already there. Replacing a link is a
+    // different operation from creating one, and on Windows the thing being
+    // replaced may be a junction rather than a symlink.
+    final again = await _dvm(
+      dvm,
+      'dvm use $sdkVersion, over the link already there',
+      <String>['use', sdkVersion],
+      workingDirectory: project.path,
+    );
+    _expect(again, contains: 'Pinned Dart $sdkVersion');
+    _record(
+      '.dvm/dart_sdk still reaches the SDK after a second pin',
+      linked.existsSync(),
+      linked.existsSync() ? linked.path : 'nothing at ${linked.path}',
+    );
   }
 
   Future<void> _which(File dvm) async {
