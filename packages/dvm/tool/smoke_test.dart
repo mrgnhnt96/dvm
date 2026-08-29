@@ -445,14 +445,15 @@ class _Smoke {
     } on FileSystemException catch (error) {
       overwriteFailure = error.osError?.message ?? error.message;
     }
-    stdout.writeln('overwriting it in place: '
-        '${overwriteFailure ?? 'allowed'}');
-    _record(
-      Platform.isWindows
-          ? 'Windows refuses to overwrite a running binary'
-          : 'POSIX allows writing over a running binary',
-      Platform.isWindows ? overwriteFailure != null : overwriteFailure == null,
-      overwriteFailure ?? 'no error',
+    // REPORTED, not asserted, and the reason is that the three platforms give
+    // three different answers: Linux refuses with "Text file busy", Windows
+    // refuses with "being used by another process", and macOS allows it. An
+    // updater that wrote in place would therefore work on the machine of
+    // whoever wrote it and fail for two thirds of its users -- which is why
+    // `Updater` renames on every platform instead, and why the check below is
+    // the one that has to pass.
+    stdout.writeln(
+      'overwriting it in place: ${overwriteFailure ?? 'allowed'}',
     );
 
     // The way Updater does it: aside, then into place.
@@ -470,7 +471,7 @@ class _Smoke {
     stdout.writeln('renaming a new one into place: '
         '${replaceFailure ?? 'ok'}');
     _record(
-      'a new binary can be put in place while the old one runs',
+      'a new binary can be renamed into place while the old one runs',
       replaceFailure == null,
       replaceFailure ?? 'ok',
     );
