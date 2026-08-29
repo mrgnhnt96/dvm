@@ -8,6 +8,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A branch that is not yet a PR still needs a way to ask a real Windows
+  # machine a question. Without this the only way to run the suite on Windows
+  # is to open a pull request, which makes "does this work on Windows?" cost a
+  # code review.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -21,15 +26,21 @@ jobs:
   test:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    # BOTH, not just ubuntu. dvm is almost entirely platform-specific
-    # behaviour — path spelling, the executable bit, `chmod`, `rename` over a
-    # running binary, where HOME is — and a suite that only ever runs on Linux
-    # would be green for every macOS-only bug in it.
+    # ALL THREE. dvm is almost entirely platform-specific behaviour — path
+    # spelling, the executable bit, `chmod`, `rename` over a running binary,
+    # where HOME is, whether a symlink can be created at all — and a suite that
+    # only ever runs on Linux would be green for every macOS-only and
+    # Windows-only bug in it. Windows earns its place twice over: it is the
+    # platform whose answers differ most, and it is the one the code had the
+    # most untested assumptions about.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-    timeout-minutes: 15
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    # The smoke test downloads and extracts a real SDK, which is minutes on
+    # Windows: `package:archive` unpacks ~5000 files, and Defender inspects
+    # each one on the way in.
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -61,12 +72,25 @@ jobs:
         working-directory: packages/dvm
         run: dart test
 
+      # The unit suite drives dvm against a `MemoryFileSystem`, which answers
+      # questions about path SPELLING and nothing else — it has no PATHEXT, no
+      # `cmd.exe`, no junctions, and it creates a symlink wherever it is asked
+      # to. This step compiles the binary, installs a real SDK, and runs the
+      # commands a person runs, so the platform gets to disagree.
+      - name: Smoke test the compiled binary
+        run: dart run packages/dvm/tool/smoke_test.dart
+
       # install.sh is the only part of dvm that is not Dart, and it is the part
       # that runs on a machine with nothing on it. `sh -n` is the parse check
       # every runner can do; shellcheck is preinstalled on the ubuntu images and
       # absent on the macOS ones, so it is run when it is there rather than
       # installed on demand.
+      #
+      # Skipped on Windows because the script's audience is a POSIX shell:
+      # install.sh is what `curl | sh` runs, and Windows installs dvm another
+      # way. The Linux and macOS jobs keep every check they had.
       - name: Check install.sh
+        if: runner.os != 'Windows'
         run: |
           sh -n install.sh
           if command -v shellcheck > /dev/null 2>&1; then
@@ -76,7 +100,10 @@ jobs:
           fi
           sh tool/test_install_sh.sh
 
+      # Same reasoning: these are bash scripts run by the release workflow,
+      # which runs on Linux.
       - name: Check the release scripts parse
+        if: runner.os != 'Windows'
         run: |
           bash -n tool/stamp_version.sh
           bash -n tool/package_release_assets.sh
