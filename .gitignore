@@ -12,3 +12,9 @@ doc/api/
 
 # macOS
 .DS_Store
+
+# llm_chat identity for this project
+.llm_chat/
+
+# machine-local hook config (absolute paths)
+.claude/settings.local.json

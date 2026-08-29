@@ -8,6 +8,7 @@ environment:
   sdk: ^3.6.0
 
 workspace:
+  - apps/docs
   - packages/dvm
 
 dev_dependencies:
