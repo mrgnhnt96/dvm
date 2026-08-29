@@ -142,8 +142,39 @@ exec /path/to/dvm exec dart "$@"
 ```
 
 `exec` replaces the process, so the only overhead is shell startup plus dvm's own
-AOT start. Windows gets a `.bat` equivalent. The user puts `~/.dvm/shims` on PATH
-ahead of everything else.
+AOT start. Windows gets a `.bat` equivalent. `~/.dvm/shims` has to be on PATH ahead
+of everything else, and `setup` prints the line that puts it there.
+
+`setup --write-path-line` adds that line to the startup file instead of printing it.
+Printing stays the default: a version manager that rewrites `.zshrc` unasked is one
+people stop trusting, and a wrong line breaks the login shell they would need in
+order to fix it. The flag is the opt-in for a user who would rather not paste.
+
+Four properties make the edit safe to hand out, and `PathLineEditor`
+(`lib/src/core/path_line.dart`) is where they live:
+
+- **A timestamped backup** beside the file (`.zshrc.dvm-backup-20260829-141530`),
+  named in the output. The timestamp rather than a fixed `.bak` means a second edit
+  cannot overwrite the copy taken before the first one.
+- **Idempotent.** A line already putting the shims directory on PATH — dvm's own, or
+  a hand-typed one differing in quoting, spacing, or `$HOME` for the home directory
+  — is recognised and left alone. A doubled PATH entry is the likeliest bug here and
+  the hardest to notice.
+- **It declines when the edit would not help.** A shadowing shell function or alias
+  beats PATH outright, and an unreadable startup file may be the one holding it, so
+  in either case the line is not written and `setup` exits 1 — the same code, and the
+  same reason, as the existing conflict contract.
+- **Reversible.** Everything written goes between `# >>> dvm >>>` and `# <<< dvm <<<`,
+  which is what lets `setup --remove-path-line` find it again. Removal takes the block
+  and nothing else: a PATH line with no markers around it is reported and left, since
+  the one thing dvm knows about it is that it did not write it. Removal exits 0 whether
+  it removed something or found nothing.
+
+PowerShell takes PATH from the user's environment rather than a startup file, so both
+flags decline there and print the `SetEnvironmentVariable` call instead. Windows users
+in Git Bash or MSYS set `$SHELL`, so they get the POSIX path and the flags work. A
+container with neither `$HOME` nor `$USERPROFILE` set has no file to name, so the flags
+print the line and exit 1 rather than guess at a path.
 
 ## Code conventions
 
@@ -173,7 +204,7 @@ ahead of everything else.
 | `which` / `current` | resolved SDK path AND which resolution rule chose it |
 | `dart <args…>` | forward to the resolved SDK's `dart` |
 | `exec <cmd> <args…>` | run any command with the resolved SDK first on PATH |
-| `setup` | create shims, print the PATH line, detect a shadowing shell function |
+| `setup` | create shims, print the PATH line, detect a shadowing shell function; `--write-path-line` writes the line to the startup file, `--remove-path-line` takes it back out |
 | `migrate` | import cbracken dvm's SDKs, then offer to remove its files |
 | `doctor` | PATH order, shim health, stale symlinks, shadowing function, config validity |
 | `update` | replace the running dvm binary with the newest release; `--check` only reports |
