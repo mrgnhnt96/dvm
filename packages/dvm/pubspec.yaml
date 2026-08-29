@@ -6,18 +6,24 @@ description: >
 version: 0.1.0-dev
 repository: https://github.com/mrgnhnt96/dvm
 issue_tracker: https://github.com/mrgnhnt96/dvm/issues
-documentation: https://mrgnhnt96.github.io/dvm/
+documentation: https://mrgnhnt.com/dvm/
 
 resolution: workspace
 
 environment:
   sdk: ^3.6.0
 
-# The executable is `dvm` even though the package is `dvm_cli`: the short
-# name is squatted on pub.dev by a 9-year-old Dart 1 alpha. install.sh is the
-# primary channel and installs the same binary under the same name, so what
-# a user types is `dvm` either way. (There is no Homebrew tap; ARCHITECTURE.md's
+# Never published. GitHub Releases + install.sh + `dvm update` is the only
+# channel, so `dart pub publish` should fail on the tooling rather than on
+# somebody remembering. (No Homebrew tap either; ARCHITECTURE.md's
 # "Distribution" section says why.)
+publish_to: none
+
+# The executable is `dvm` even though the package is `dvm_cli`. The short name
+# was unavailable on pub.dev, which no longer constrains anything now that we
+# do not publish -- but the package name is load-bearing in every
+# `package:dvm_cli/...` import, so renaming it is a mechanical change worth
+# doing deliberately, not a drive-by. What a user types is `dvm` regardless.
 executables:
   dvm:
 

@@ -163,7 +163,7 @@ ahead of everything else.
 
 The shipped artifact is an **AOT-compiled binary** (`dart compile exe`) attached to a
 GitHub Release. A version manager cannot require the language it manages in order to
-install itself, so `dart pub global activate` cannot be the primary channel — it would
+install itself, so `dart pub global activate` cannot be the channel at all — it would
 mean needing Dart to install the thing that installs Dart.
 
 There is **no Homebrew tap**. An install script plus a self-updater costs no second
@@ -197,5 +197,13 @@ keeps the inode alive, so temp-file-then-rename is safe. Windows cannot replace 
 running `.exe`; there the current binary must be renamed aside first, then the new one
 written in its place.
 
-pub.dev remains a SECONDARY convenience for people who already have Dart: package
-`dvm_cli`, executable `dvm` (the short name is squatted by a nine-year-old Dart 1 alpha).
+dvm is **not published on pub.dev**, and there is no second channel of any kind. GitHub
+Releases plus `install.sh` plus `dvm update` is the whole distribution story. `dart pub
+global activate` is not offered even as a convenience for people who already have Dart —
+a version manager that can be installed two ways has two upgrade paths to keep honest and
+two ways for `dvm update` to be wrong about what is installed.
+
+The package therefore declares `publish_to: none`, so an accidental `dart pub publish` is
+refused by the tooling rather than by somebody remembering. It also means the package
+directory does not need the `README.md`, `CHANGELOG.md` and `LICENSE` that pub scores; the
+repository root carries those for humans.
