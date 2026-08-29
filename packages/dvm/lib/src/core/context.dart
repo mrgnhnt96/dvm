@@ -36,6 +36,7 @@ class DvmContext {
     required this.hostPlatform,
     required this.out,
     required this.err,
+    required this.outIsTerminal,
   });
 
   /// Builds a context from the pieces that vary, wiring up the rest.
@@ -49,6 +50,7 @@ class DvmContext {
     required String platformVersion,
     required StringSink out,
     required StringSink err,
+    bool outIsTerminal = false,
     String executablePath = '',
     ReleaseClient? releases,
     Installer? installer,
@@ -83,6 +85,7 @@ class DvmContext {
             hostPlatform: hostPlatform,
             // Download progress is normal output, not a diagnostic.
             progress: out,
+            progressIsTerminal: outIsTerminal,
           ),
       processes: processes ?? createProcessRunner(),
       updater: updater ??
@@ -95,6 +98,7 @@ class DvmContext {
       hostPlatform: hostPlatform,
       out: out,
       err: err,
+      outIsTerminal: outIsTerminal,
     );
   }
 
@@ -126,6 +130,16 @@ class DvmContext {
 
   /// Errors and diagnostics.
   final StringSink err;
+
+  /// Whether [out] is a terminal a human is watching, rather than a file, a
+  /// pipe or a CI log.
+  ///
+  /// Only progress that repaints itself may depend on this. A carriage return
+  /// sent anywhere but a terminal does not overwrite the line, it extends it,
+  /// so `dvm install` captured to a file would otherwise be one 20KB line
+  /// holding every percentage it ever printed. Defaults to false: a sink whose
+  /// nature is unknown gets the output that is readable either way.
+  final bool outIsTerminal;
 
   /// The directory commands act relative to — `.dvmrc` lookup starts here.
   Directory get workingDirectory => fileSystem.currentDirectory;
