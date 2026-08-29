@@ -66,11 +66,103 @@ void main() {
         'someone else put this here',
       );
     });
+  });
 
-    test('pins the working directory, not the nearest existing .dvmrc',
+  group('the one governing .dvmrc', () {
+    /// A nested package with an existing pin at the repository root, and the
+    /// user standing in the package. This is the shape every test here needs.
+    void nestedUnderPinnedRoot({String rootPin = '3.13.2'}) {
+      harness.fileSystem.file('/project/.dvmrc').writeAsStringSync(rootPin);
+      harness.fileSystem
+          .directory('/project/packages/app')
+          .createSync(recursive: true);
+      harness.fileSystem.currentDirectory = '/project/packages/app';
+    }
+
+    test('updates the ancestor .dvmrc instead of creating a nested one',
         () async {
       harness.installVersion('3.9.0');
-      harness.fileSystem.file('/project/.dvmrc').writeAsStringSync('3.13.2');
+      nestedUnderPinnedRoot();
+
+      expect(await harness.run(['use', '3.9.0']), 0);
+
+      expect(harness.readDvmrc('/project/.dvmrc'), contains('3.9.0'),
+          reason: 'the pin that governs this directory is the one that must '
+              'change');
+      // Explicitly absent: a second .dvmrc here would shadow the one above it,
+      // and nothing would say so.
+      expect(
+        harness.fileSystem.file('/project/packages/app/.dvmrc').existsSync(),
+        isFalse,
+        reason: 'a nested .dvmrc must never appear by accident',
+      );
+    });
+
+    test('what it pinned resolves from the directory it was run in', () async {
+      harness.installVersion('3.9.0');
+      nestedUnderPinnedRoot();
+
+      await harness.run(['use', '3.9.0']);
+      harness.clearOutput();
+
+      // The point of the whole leaf: write and read agree. `which` runs the
+      // resolver, so this is rule 2 answering with the pin `use` just wrote.
+      expect(await harness.run(['which']), 0);
+      expect(harness.output, contains('3.9.0'));
+      expect(harness.output, contains('/project/.dvmrc'));
+    });
+
+    test('names the file it changed, by absolute path', () async {
+      harness.installVersion('3.9.0');
+      nestedUnderPinnedRoot();
+
+      await harness.run(['use', '3.9.0']);
+
+      expect(harness.output, contains('/project/.dvmrc'));
+      expect(harness.output, contains('/project/packages/app'),
+          reason: 'the user is standing three levels below the file that '
+              'changed and must not have to guess');
+    });
+
+    test('the symlink and the gitignore notice follow the .dvmrc', () async {
+      harness.installVersion('3.9.0');
+      nestedUnderPinnedRoot();
+
+      await harness.run(['use', '3.9.0']);
+
+      // Beside the pin, which is also where `dvm doctor` looks for it.
+      expect(
+        harness.fileSystem.link('/project/.dvm/dart_sdk').targetSync(),
+        '/dvm/versions/3.9.0',
+      );
+      expect(
+        harness.fileSystem.directory('/project/packages/app/.dvm').existsSync(),
+        isFalse,
+      );
+      expect(harness.output, contains('/project/.gitignore'));
+    });
+
+    test('--gitignore writes beside the .dvmrc, not beside the user', () async {
+      harness.installVersion('3.9.0');
+      nestedUnderPinnedRoot();
+
+      expect(await harness.run(['use', '3.9.0', '--gitignore']), 0);
+
+      expect(
+        harness.fileSystem.file('/project/.gitignore').readAsStringSync(),
+        contains('.dvm/'),
+      );
+      expect(
+        harness.fileSystem
+            .file('/project/packages/app/.gitignore')
+            .existsSync(),
+        isFalse,
+      );
+    });
+
+    test('with no .dvmrc anywhere above, one is created where you stand',
+        () async {
+      harness.installVersion('3.9.0');
       harness.fileSystem
           .directory('/project/packages/app')
           .createSync(recursive: true);
@@ -80,8 +172,76 @@ void main() {
 
       expect(
           harness.readDvmrc('/project/packages/app/.dvmrc'), contains('3.9.0'));
+      expect(harness.fileSystem.file('/project/.dvmrc').existsSync(), isFalse);
+    });
+
+    test('the walk reaches the filesystem root without crashing', () async {
+      harness.installVersion('3.9.0');
+      // Standing at the root itself: `parent` of `/` is `/`, which is where a
+      // walk that does not check for a fixed point spins forever.
+      harness.fileSystem.currentDirectory = '/';
+
+      expect(await harness.run(['use', '3.9.0']), 0);
+      expect(harness.readDvmrc('/.dvmrc'), contains('3.9.0'));
+    });
+
+    test('--here creates the nested pin the monorepo case wants', () async {
+      harness.installVersion('3.9.0');
+      nestedUnderPinnedRoot();
+
+      expect(await harness.run(['use', '3.9.0', '--here']), 0);
+
+      expect(
+          harness.readDvmrc('/project/packages/app/.dvmrc'), contains('3.9.0'));
       expect(harness.readDvmrc('/project/.dvmrc'), '3.13.2',
-          reason: 'the parent project keeps its own pin');
+          reason: 'the repository root keeps its own pin');
+      expect(
+        harness.fileSystem
+            .link('/project/packages/app/.dvm/dart_sdk')
+            .targetSync(),
+        '/dvm/versions/3.9.0',
+        reason: 'the symlink follows the .dvmrc, which is now the nested one',
+      );
+    });
+
+    test('--here says that the new pin shadows the one above it', () async {
+      harness.installVersion('3.9.0');
+      nestedUnderPinnedRoot();
+
+      await harness.run(['use', '3.9.0', '--here']);
+
+      expect(harness.output, contains('shadows'));
+      expect(harness.output, contains('/project/.dvmrc'),
+          reason: 'the ancestor that stopped applying has to be named');
+    });
+
+    test('--here on a directory that already holds the pin just updates it',
+        () async {
+      harness
+        ..installVersion('3.9.0')
+        ..installVersion('3.13.2');
+      await harness.run(['use', '3.13.2']);
+      harness.clearOutput();
+
+      expect(await harness.run(['use', '3.9.0', '--here']), 0);
+      expect(harness.readDvmrc(), contains('3.9.0'));
+      expect(harness.output, isNot(contains('shadows')),
+          reason: 'nothing was shadowed; the same file was rewritten');
+    });
+
+    test('--global never goes looking for a .dvmrc', () async {
+      harness.installVersion('3.9.0');
+      nestedUnderPinnedRoot();
+
+      expect(await harness.run(['use', '3.9.0', '--global']), 0);
+
+      expect(harness.readConfig().global, '3.9.0');
+      expect(harness.readDvmrc('/project/.dvmrc'), '3.13.2',
+          reason: 'a machine default must not rewrite a project pin');
+      expect(
+        harness.fileSystem.file('/project/packages/app/.dvmrc').existsSync(),
+        isFalse,
+      );
     });
   });
 
