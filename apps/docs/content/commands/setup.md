@@ -30,19 +30,19 @@ Then check it with: dvm doctor
 | --- | --- |
 | `--dvm-path <path>` | The dvm binary to bake into the shim. Defaults to the running one; needed when running from source. |
 
-## It does not edit your shell profile
+## It prints the PATH line for you
 
-It prints the line and stops. See [The Shim and Your PATH](/getting-started/shell-setup) for why — briefly, a tool that rewrites `.zshrc` behind your back is one people stop trusting, and getting that line wrong does not warn you, it breaks your login shell.
+It prints the exact line and names the file it belongs in, so the change to your login shell stays yours to make. See [The Shim and Your PATH](/getting-started/shell-setup) for which file each shell reads.
 
-## It refuses to run from source
+## It needs a dvm binary to point at
 
-Under `dart run bin/dvm.dart`, the running executable is the *Dart VM*, not dvm. A shim baked with that path would read
+The shim contains an absolute path to a dvm binary, so `dvm setup` has to know where one is. Under `dart run bin/dvm.dart` the running executable is the *Dart VM*, and a shim baked with that path would read
 
 ```sh
 exec /path/to/dart exec dart "$@"
 ```
 
-and hand `exec dart` to the SDK as arguments on every `dart` invocation on the machine. So dvm refuses rather than guessing:
+and hand `exec dart` to the SDK as arguments on every `dart` invocation on the machine. So dvm names the binary it wants instead of guessing:
 
 ```text
 dvm: dvm is running from source (via /Users/you/.dvm/versions/3.13.2/bin/dart), so it cannot tell where a dvm binary lives, and a shim pointing at the Dart VM would break every `dart` on this machine.
@@ -50,11 +50,11 @@ Compile it first:  dart compile exe bin/dvm.dart -o /usr/local/bin/dvm
 Or name the binary: dvm setup --dvm-path <path to dvm>
 ```
 
-`--dvm-path` is the escape hatch for exactly that case.
+`--dvm-path` names the binary directly, which is the answer whenever dvm is running from source.
 
 ## Exit code
 
-`dvm setup` exits **1** if it detects something that makes the shim inert — most importantly a [shell function shadowing `dvm`](/getting-started/shell-setup), which the older `cbracken/dvm` installs. Reporting success there would be a lie you would only discover the next time you ran `dart`.
+`dvm setup` exits **1** when it finds something that would leave the shim inert — most importantly a [shell function shadowing `dvm`](/getting-started/shell-setup), which the older `cbracken/dvm` installs. The exit code tells you at the command that wrote the shim, rather than the next time you run `dart`.
 
 ## Re-running it
 

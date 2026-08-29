@@ -15,7 +15,7 @@ dvm dart run bin/main.dart
 dvm dart test
 ```
 
-This is what [the shim](/getting-started/shell-setup) calls. Once `~/.dvm/shims` is on your `PATH`, plain `dart` does the same thing and you rarely type this form — it is useful when the shim is not installed, or when you want to be explicit.
+This is what [the shim](/getting-started/shell-setup) calls. Once `~/.dvm/shims` is on your `PATH`, plain `dart` does the same thing, so this form is mostly for being explicit — or for a machine where the shim has yet to be installed.
 
 ## Arguments are passed through verbatim
 
@@ -27,18 +27,18 @@ dvm dart --version
 
 reports the *SDK's* version rather than dvm's.
 
-The one exception is a leading `--`. Writing `dvm dart -- --version` uses the terminator to say "stop reading these", so dvm drops the terminator and passes the rest along. Without that, `dart` would receive an argument you meant for dvm.
+The one exception is a leading `--`. Writing `dvm dart -- --version` uses the terminator to say "stop reading these", so dvm drops the terminator and passes the rest along.
 
 ## What the child process sees
 
-- **stdio is inherited**, not piped. The child is talking to the real terminal, so anything that asks "am I a tty?" — a prompt from `dart run`, progress output, colour — gets the right answer, and dvm never sits in the middle copying bytes.
+- **stdio is inherited.** The child talks to the real terminal, so anything that asks "am I a tty?" — a prompt from `dart run`, progress output, colour — gets the right answer, and dvm stays out of the byte path.
 - **`PATH` has the resolved SDK's `bin` first**, so a `dart` that the child itself spawns is the same one.
-- **`DVM_DART_VERSION` is set** to the resolved version, so nested dvm invocations agree with this one. It is deliberately *not* set under [rule 4](/versions/resolution-order), where the SDK is not dvm-managed.
-- **The exit code becomes dvm's.** A version manager that turned a failing `dart test` into a success would break CI for everyone downstream.
+- **`DVM_DART_VERSION` is set** to the resolved version, so nested dvm invocations agree with this one. Under [rule 4](/versions/resolution-order) it is left unset, so a nested dvm runs the five rules for itself and reaches the same SDK.
+- **The exit code becomes dvm's.** A failing `dart test` fails through dvm exactly as it would without it, which is what CI depends on.
 
 ## Signals
 
-`SIGINT` and `SIGTERM` are forwarded to the child. Ctrl-C at a terminal already reaches the whole foreground process group, but a `kill` aimed at dvm by a supervisor or a script does not — without forwarding, that would kill the wrapper and leave the real work orphaned.
+`SIGINT` and `SIGTERM` are forwarded to the child. Ctrl-C at a terminal already reaches the whole foreground process group; forwarding extends the same behaviour to a `kill` aimed at dvm by a supervisor or a script, so the real work stops along with the wrapper.
 
 ## See also
 

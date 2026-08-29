@@ -38,13 +38,13 @@ Only `FAIL` changes the exit code, which is what makes
 dvm doctor || exit 1
 ```
 
-usable as a CI gate: a machine that merely still has the old tool's directories lying around does not fail the build.
+usable as a CI gate: it fails the build on what is actually broken, and passes a machine that merely still has the old tool's directories lying around.
 
 ## What it checks
 
-**PATH** — not just whether `~/.dvm/shims` is on `PATH`, but whether it is ahead of every other `dart`. Membership is not the question; a `dart` in an earlier entry is found first and the shim never runs, which looks exactly like dvm doing nothing at all.
+**PATH** — whether `~/.dvm/shims` sits ahead of every other `dart` on `PATH`. Position is the question, because a `dart` in an earlier entry is found first and the shim never runs, which looks exactly like dvm doing nothing at all.
 
-**shims** — that the shim exists, is executable, and points at a dvm binary that is still there. Reinstalling or moving dvm without re-running [`dvm setup`](/commands/setup) leaves a shim pointing at nothing.
+**shims** — that the shim exists, is executable, and points at a dvm binary that is still there. This is the check that catches a shim left behind by moving or reinstalling dvm; running [`dvm setup`](/commands/setup) again puts it right.
 
 **shell** — whether a shell function or alias named `dvm` is being sourced from your startup files. **This is the most valuable check in the command.** On a machine that has ever carried [`cbracken/dvm`](/guides/migrating), `dvm` is a shell *function*, and a shell function is resolved before `PATH` is searched at all — so the binary you installed is never reached, and nothing on screen says why. `doctor` reports the file and the line.
 

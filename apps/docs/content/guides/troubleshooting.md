@@ -74,7 +74,7 @@ Or, if the pin is wrong, `dvm use <right version>`.
 
 Your pin says `stable`, but nothing has recorded what `stable` means on this machine.
 
-[Resolution never touches the network](/versions/aliases), so a channel name only resolves to whatever was written down when you last ran `dvm install stable`. Run it:
+[Resolution answers a channel name from `config.json`](/versions/aliases), so `stable` means whatever was written down when you last ran `dvm install stable`. Run it:
 
 ```sh
 dvm install stable
@@ -91,7 +91,7 @@ dvm global <version>   # set a machine-wide fallback
 
 ## An SDK is installed but marked `BROKEN: no bin/dart`
 
-An interrupted install, or something in `~/.dvm/versions` that is not an SDK. `dvm list` shows it rather than hiding it, because a few hundred megabytes of unusable disk is worth knowing about.
+An interrupted install, or something in `~/.dvm/versions` that is not an SDK. `dvm list` shows it and marks it, because a few hundred megabytes of unusable disk is worth knowing about.
 
 ```sh
 dvm remove <version> --force
@@ -123,7 +123,7 @@ git rm --cached -r .dvm
 dvm use <version> --gitignore
 ```
 
-The second command appends `.dvm/` to `.gitignore` for you. dvm never edits that file unless you pass the flag.
+The second command appends `.dvm/` to `.gitignore` for you; dvm makes that edit when you pass the flag.
 
 ## `dvm exec: command not found: X`
 
@@ -137,7 +137,7 @@ Exit code 127, the same as a shell. The command was not on the child's `PATH` �
 rm -rf ~/.dvm/cache
 ```
 
-An interrupted install can never leave a half-extracted directory in `versions/` — extraction happens in `cache/` and is renamed into place atomically — so this is the only cleanup there is.
+Extraction happens in `cache/` and is renamed into place atomically, so `versions/` only ever holds complete SDKs and `cache/` is the whole of the cleanup.
 
 ## Still stuck
 

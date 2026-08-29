@@ -3,9 +3,9 @@ title: Using dvm in CI
 description: Get a build machine onto the SDK a project pins, without a shim, a shell profile, or a login shell.
 ---
 
-CI is where dvm's design pays off least dramatically and most reliably: the version a build uses is the version in the repository, so it cannot drift from what developers have.
+CI is where dvm's design pays off most reliably: the version a build uses is the version in the repository, the same one developers have.
 
-The main thing to know is that **you do not need the shim on a build machine.** The shim exists to make an interactive shell's `dart` follow the pin. In CI you control every command, so [`dvm exec`](/commands/exec) is simpler and has nothing to configure.
+The main thing to know is that **[`dvm exec`](/commands/exec) is all a build machine needs.** The shim exists to make an interactive shell's `dart` follow the pin; in CI you write every command yourself, so naming `dvm exec` in front of them is simpler and takes no configuration.
 
 ## The short version
 
@@ -24,7 +24,7 @@ That parsing is ugly. Two better options follow.
 
 ## Option 1 — `dvm use` reads the pin for you
 
-`dvm use` with no version is not a thing, but `dvm install` accepts what `.dvmrc` says if you hand it over. The cleanest form is to let dvm resolve and install in one step by pinning explicitly in the workflow *and* in the repository, and letting [`dvm doctor`](/commands/doctor) fail the build if they disagree:
+Name the version in the workflow as well as in the repository, and let the two check each other:
 
 ```yaml
 - name: Install dvm
@@ -39,7 +39,7 @@ That parsing is ugly. Two better options follow.
   run: dvm exec dart test
 ```
 
-`dvm exec` resolves through [rule 2](/versions/resolution-order) — the repository's own `.dvmrc` — so if the two ever drift, the SDK is not installed and the build fails loudly at the `exec` step rather than silently testing against the wrong version.
+`dvm exec` resolves through [rule 2](/versions/resolution-order) — the repository's own `.dvmrc` — so the build tests against the SDK `.dvmrc` names. If the workflow ever names a different one, the `exec` step says so at once.
 
 ## Option 2 — `DVM_DART_VERSION`
 
@@ -79,7 +79,7 @@ env:
 run: dvm --no-version-check exec dart test
 ```
 
-A build machine cannot act on "a newer dvm is available", and the check costs a network request per command. The notice goes to stderr, so it will not corrupt captured output — but there is no reason to pay for it.
+The notice is for a human at a terminal, and the check costs a network request per command, so a build runs faster and quieter without it.
 
 ## Cache `~/.dvm/versions`
 
@@ -92,11 +92,11 @@ An SDK download is the slowest part of the job and the most cacheable:
     key: dvm-${{ runner.os }}-${{ hashFiles('.dvmrc') }}
 ```
 
-Key it on `.dvmrc` so bumping the pin invalidates the cache. Do **not** cache `~/.dvm/cache` — that is in-flight download scratch and is safe to delete at any time, which is exactly what you do not want a restored cache to bring back.
+Key it on `.dvmrc` so bumping the pin invalidates the cache. Cache `versions/` and leave `~/.dvm/cache` to itself — that one holds in-flight download scratch, disposable by design, and a job starts cleaner without it.
 
 ## In a Dockerfile
 
-Pin the installer as well as the SDK, or the image changes underneath you:
+Pin the installer as well as the SDK, so the image builds the same way every time:
 
 ```dockerfile
 ENV DVM_VERSION=0.2.0
@@ -109,9 +109,9 @@ RUN dvm install 3.13.2
 
 `DVM_HOME` moves the whole installation somewhere else if `/root` is wrong for your image.
 
-## If you do want the shim
+## Using the shim in CI
 
-It works, and it is the right choice when the build runs scripts you do not control that call `dart` directly:
+It works, and it is the right choice when the build runs scripts you did not write that call `dart` directly:
 
 ```yaml
 - run: |
@@ -121,7 +121,7 @@ It works, and it is the right choice when the build runs scripts you do not cont
     echo "$HOME/.dvm/bin" >> "$GITHUB_PATH"
 ```
 
-Note the order: shims first, so [nothing else on `PATH` supplies a `dart` before it](/getting-started/shell-setup). GitHub's `$GITHUB_PATH` prepends, so the *last* line written ends up first — put `shims` before `bin` and you get `bin` first, which is fine, but check with `dvm doctor` rather than assuming.
+Note the order: shims go [ahead of everything else on `PATH` that supplies a `dart`](/getting-started/shell-setup). GitHub's `$GITHUB_PATH` prepends, so the *last* line written ends up first — writing `shims` then `bin` gives you `bin` first, which works fine. Confirm it with `dvm doctor`.
 
 ## Verify before you rely on it
 

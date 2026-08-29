@@ -31,9 +31,9 @@ Pinned Dart 3.13.2 for /Users/you/code/api.
 
 **`.dvmrc`** — the pin. Two lines of JSON. **Commit it.** This is what makes the pin apply to everyone who clones the repository.
 
-**`.dvm/dart_sdk`** — a symlink to `~/.dvm/versions/<version>`, for IDEs and analyzer plugins that want an SDK directory. It contains an absolute path into your home directory. **Do not commit it.**
+**`.dvm/dart_sdk`** — a symlink to `~/.dvm/versions/<version>`, for IDEs and analyzer plugins that want an SDK directory. It contains an absolute path into your home directory, so it means something on this machine and nowhere else. **Keep it out of version control.**
 
-If `.dvm/dart_sdk` already exists as something other than a symlink, dvm refuses to replace it rather than deleting whatever you have there.
+If `.dvm/dart_sdk` already exists as something other than a symlink, dvm leaves it where it is and says so — whatever you put there stays yours.
 
 ## `--gitignore`
 
@@ -54,19 +54,19 @@ It appends:
 .dvm/
 ```
 
-Without the flag it just tells you the rule is missing. Editing a file you did not name, in a repository dvm does not own, is not something it does on its own — and there is no interactive prompt, because every dvm command has to stay runnable from a script and from CI.
+Without the flag it names the rule it would add and leaves the file to you. The repository is yours, so the edit is yours to ask for — by flag rather than by prompt, which is what keeps every dvm command runnable from a script and from CI.
 
-If `.dvm` is already ignored under any of the usual spellings, dvm says so and adds nothing.
+If `.dvm` is already ignored under any of the usual spellings, dvm says so and leaves the file as it is.
 
 ## It installs first
 
-Naming a version you do not have is fine — `dvm use` installs it and then pins it. So the two-command form
+Name a version you do not have and `dvm use` installs it, then pins it. So the two-command form
 
 ```sh
 dvm install 3.13.2 && dvm use 3.13.2
 ```
 
-is only worth typing when you want the download to happen at a different time from the pin.
+is worth typing when you want the download to happen at a different time from the pin.
 
 ## Pinning a name
 
@@ -84,12 +84,12 @@ Pinned Dart 3.13.2 for /Users/you/code/api (work -> 3.13.2).
 ```
 
 <Callout type="warning">
-`.dvmrc` records the version, not the name. Pinning `stable` in a repository other people build means their `stable` may be a different SDK from yours — see [Aliases and Channels](/versions/aliases).
+`dvm use stable` records the version `stable` currently means on this machine, so the `.dvmrc` you commit names a concrete SDK. A **hand-written** `.dvmrc` saying `stable` resolves against each machine's own record instead, so pin a version there for a repository other people build — see [Aliases and Channels](/versions/aliases).
 </Callout>
 
 ## In a monorepo
 
-`dvm use` writes to the **current directory**, never to the nearest existing `.dvmrc` above it. Running it inside one package pins that package rather than silently rewriting the pin at the repository root.
+`dvm use` writes to the **current directory**. Running it inside one package pins that package, and the pin at the repository root stays exactly as it was.
 
 ## See also
 

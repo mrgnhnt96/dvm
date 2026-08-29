@@ -31,17 +31,17 @@ Nearest wins, which is what makes a monorepo with a per-package override work.
 
 ### 4. The next real `dart` on `PATH`
 
-If nothing above matched, dvm scans `PATH` for a `dart` that is **not one of its own shims** and hands off to that.
+When no rule above matched, dvm scans `PATH` for a `dart` that is **not one of its own shims** and hands off to that.
 
-This rule is why installing dvm does not break your machine. Directories with no `.dvmrc` and no global default keep working exactly as they did before, running whatever `dart` you already had.
+This rule is what keeps the rest of your machine working as it did. A directory that pins nothing and has no global default runs whatever `dart` you already had.
 
 <Callout type="info">
-Under rule 4 the SDK is not dvm-managed, so dvm does not claim to know its version, and it does not set `DVM_DART_VERSION` for the child process — pinning a version dvm did not choose would be a lie that a nested dvm would then act on.
+Under rule 4 the SDK is your own, so dvm reports the path and leaves the version to it, and leaves `DVM_DART_VERSION` unset for the child process — a nested dvm then runs the same five rules and reaches the same SDK.
 </Callout>
 
 ### 5. A clear error
 
-Nothing applies. dvm says so, enumerating what it checked:
+When no rule matched, dvm says so and lists everything it checked:
 
 ```text
 No Dart SDK applies in /Users/you/scratch.
@@ -85,15 +85,15 @@ When a pin was indirect, the hop is spelled out too:
 
 [`dvm list`](/commands/list) prints a one-line version of the same thing under the list of installed SDKs.
 
-## Resolution does no network I/O
+## Every resolution is two small file reads
 
-Not "usually not" — never. Every `dart` invocation on the machine pays for this path once the shim is installed, so it reads at most two small files (`.dvmrc` and `config.json`) and stats a directory.
+Every `dart` invocation on the machine pays for this path once the shim is installed, so it stays as cheap as it can be: at most two small files (`.dvmrc` and `config.json`) and one `stat`. That is what keeps `dart` through the shim as fast as `dart` without it — on a plane and behind a firewall as much as anywhere else.
 
-In particular, [channel names are never re-resolved here](/versions/aliases). `stable` means the version that was recorded when you last ran `dvm install stable`. Asking the archive what `stable` means today happens only when you explicitly ask for it.
+[A channel name is answered from `config.json` here](/versions/aliases): `stable` means the version recorded when you last ran `dvm install stable`. Asking the archive what `stable` means today is its own command, run when you want it.
 
 ## The shim-skipping in rule 4
 
-Rule 4 deliberately skips dvm's own shims, and it is not cosmetic.
+Rule 4 skips dvm's own shims, and that is what makes rule 4 terminate.
 
 The shim *is* `~/.dvm/shims/dart`, you are told to put that directory first on `PATH`, and its body is `exec dvm exec dart "$@"`. A scan that took the first `dart` it found would find the shim, run it, and re-enter resolution — forking until the machine gave up.
 
@@ -103,19 +103,19 @@ So rule 4 skips three things:
 - a symlink pointing into the shims directory — what `ln -s ~/.dvm/shims/dart ~/.local/bin/dart` leaves behind,
 - a *copy* of a shim, recognised by its contents, which no path comparison could catch.
 
-## When resolution fails mid-way
+## When a pin names a version you do not have
 
-Rules 1, 2 and 3 can match and still fail, and that is deliberate. If your `.dvmrc` pins a version that is not installed, dvm reports it rather than falling through to rule 4:
+Rules 1, 2 and 3 name a version, so they can match and still have work left. When your `.dvmrc` pins a version you have not installed, dvm names it and gives you the command that fills the gap:
 
 ```text
 dvm: Dart 3.9.0 is pinned by /Users/you/code/api/.dvmrc, but it is not installed. Run: dvm install 3.9.0
 ```
 
-Falling through would silently run a different SDK than the project asked for — the exact failure the tool exists to prevent.
+You get the SDK the project asked for, or a message naming the one it asked for. That is the guarantee the whole tool is built to give.
 
 ## Debugging checklist
 
-When `dart --version` is not what you expect:
+When you want to know how `dart --version` reached its answer:
 
 1. `which dart` — is it `~/.dvm/shims/dart`? If not, [your `PATH` order is wrong](/getting-started/shell-setup).
 2. `dvm which` — which rule answered, and from which file?

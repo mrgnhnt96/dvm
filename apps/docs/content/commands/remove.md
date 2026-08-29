@@ -1,6 +1,6 @@
 ---
 title: dvm remove
-description: Delete an installed SDK — refusing if something still points at it, unless you insist.
+description: Delete an installed SDK, after checking what still points at it.
 ---
 
 ```text
@@ -23,7 +23,7 @@ Removed Dart 3.9.0 (/Users/you/.dvm/versions/3.9.0).
 | --- | --- |
 | `-f`, `--force` | Remove it even if something still points at it. |
 
-## It refuses when something depends on it
+## What still points at it
 
 ```sh
 dvm remove 3.13.2
@@ -36,13 +36,13 @@ Refusing to remove Dart 3.13.2: 2 things still point at it.
 Repoint them first, or remove it anyway with: dvm remove 3.13.2 --force
 ```
 
-Repointing first is almost always what you want. A [global default](/commands/global) naming a version that is not installed makes *every* command outside a pinned project fail until it is fixed, and the error appears somewhere unrelated to where you caused it.
+Repointing first is almost always what you want: a [global default](/commands/global) applies to *every* command run outside a pinned project, so it is worth landing on a version you have.
 
-With `--force`, dvm removes it and then tells you — on stderr — exactly what it just broke, so the damage is visible rather than latent.
+With `--force`, dvm removes it and then names on stderr exactly what it changed, so you leave the command knowing what to repoint.
 
 ## What it cleans up on the way
 
-Removing a version drops any channel record pointing at it, so `channels.stable` does not keep naming a version that no longer exists. [Aliases are not rewritten](/versions/aliases) — an alias is a name you chose, and dvm repointing it at something you did not pick would be worse than leaving it dangling and saying so.
+Removing a version drops any channel record pointing at it, so `channels.stable` keeps naming something you have. [An alias stays as you wrote it](/versions/aliases) and dvm reports it instead — the name was your choice, so repointing it is yours too.
 
 If the current project's `.dvmrc` pins the version you just removed, dvm warns about that too.
 
@@ -54,13 +54,13 @@ The argument is a pin, so an alias or a channel name resolves first:
 dvm remove work     # removes whatever "work" currently means
 ```
 
-## Not installed
+## Already removed
 
 ```text
 Dart 3.9.0 is not installed, so there is nothing to remove. See what is: dvm list
 ```
 
-Exit code 1 — so a script cannot mistake "there was nothing there" for "it was removed".
+Exit code 1, so a script can tell "there was nothing there" from "it was removed".
 
 ## See also
 

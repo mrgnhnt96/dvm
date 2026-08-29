@@ -22,7 +22,7 @@ dvm list-remote
 Showing the newest 25 of 177 stable releases. Pass --all to see them all.
 ```
 
-This is one of only two commands that touch the network at all. The other is [`dvm install`](/commands/install) when you name a channel. [Resolution never does](/versions/resolution-order).
+This is one of the two commands that reach the network. The other is [`dvm install`](/commands/install) when you name a channel; [resolution answers from local files](/versions/resolution-order).
 
 ## Flags
 
@@ -40,7 +40,7 @@ dvm list-remote --all
 
 Stable alone carries around 177 semver releases. A full dump buries the handful anybody is actually about to install, so the newest 25 are shown and the rest are one flag away.
 
-The archive also holds about 28 legacy Dart 1 build numbers (`29803`, `41096`, …) and a `latest` marker. dvm filters those out — they are not versions you can pin.
+The archive also holds about 28 legacy Dart 1 build numbers (`29803`, `41096`, …) and a `latest` marker. dvm lists the semver releases you can pin, and leaves those aside.
 
 ## A version can be in more than one channel
 

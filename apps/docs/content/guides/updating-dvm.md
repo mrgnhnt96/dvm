@@ -1,6 +1,6 @@
 ---
 title: Updating dvm
-description: How a new dvm reaches your machine, why there is no Homebrew tap, and how to turn the update notice off.
+description: How a new dvm reaches your machine, what ships in a release, and how to turn the update notice off.
 ---
 
 dvm updates itself. There are two paths to a newer version and they do the same work.
@@ -21,7 +21,7 @@ which is the same script that installed it in the first place. Both find the new
 
 ## What ships
 
-The artifact is an **AOT-compiled binary** — `dart compile exe` — attached to a GitHub Release. That is not a packaging preference; it is the constraint the whole distribution story is built around. A Dart version manager cannot require the language it manages in order to install itself: any channel that shipped source and compiled it on your machine would mean needing Dart to install the thing that installs Dart.
+The artifact is an **AOT-compiled binary** — `dart compile exe` — attached to a GitHub Release. A compiled binary runs on a machine with nothing installed, which is exactly the machine a Dart version manager arrives on: the language it manages is the thing that is missing. That property is what the whole distribution story is built on.
 
 Assets are named:
 
@@ -36,24 +36,18 @@ dvm-windows-x64.zip
 Each contains a bare `dvm` (`dvm.exe` on Windows), and each has a `.sha256` published beside it.
 
 <Callout type="info">
-Those five names are a **contract**. `install.sh` and `dvm update` both construct them, so changing the naming would break every installed copy's ability to update itself. It is spelled identically in the install script, the release packaging script, and the updater.
+Those five names are a **contract**. `install.sh` and `dvm update` both construct them, which is what lets an installed copy find its own next version. The same spelling appears in the install script, the release packaging script, and the updater.
 </Callout>
-
-## Why there is no Homebrew tap
-
-A tap costs a second repository, a cross-repo credential (the `GITHUB_TOKEN` a workflow gets only grants access to the repo it runs in), and a formula-bumping job on every release. In exchange it reaches macOS users who already had another way to install, and Linux users hardly at all.
-
-An install script plus a self-updater costs none of that and covers everyone. So: no tap, and none planned.
 
 ## How "latest" is decided
 
-dvm scans `/releases` for the newest non-draft, non-prerelease entry that **actually carries the asset it needs**. It deliberately does not use GitHub's `/releases/latest` endpoint: a repository that later publishes per-package releases would otherwise resolve "latest" to a release with no CLI binary in it, and the failure would look like a broken download rather than a wrong lookup.
+dvm scans `/releases` for the newest non-draft, non-prerelease entry that **carries the asset it needs**. Choosing on the asset rather than on a release's position means "latest" always names a release with a CLI binary in it, even in a repository that also publishes per-package releases.
 
 ## Replacing a running binary
 
-On POSIX, `rename` over a running executable keeps the old inode alive — the process you are in keeps running from the file that is no longer at that path — so writing a temp file and renaming it into place is safe, and never leaves a truncated `dvm` at the real path if the copy is interrupted.
+On POSIX, `rename` over a running executable keeps the old inode alive — the process you are in keeps running from the file that is no longer at that path — so writing a temp file and renaming it into place is safe: that path holds the old binary or the new one, and an interrupted copy leaves the old one there.
 
-Windows cannot replace a running `.exe` at all, so there the current binary is renamed aside first and the new one written in its place.
+On Windows the current binary is renamed aside first and the new one written in its place, which is how a running `.exe` gets replaced there.
 
 ## The update notice
 
@@ -65,9 +59,9 @@ A newer dvm is available: 0.1.0 -> 0.2.0. Run: dvm update
 
 Three things about it:
 
-- It goes to **stderr**, so it cannot contaminate `dvm which --path` or `dvm list` for a script reading them.
-- It is skipped when dvm is running from source rather than as a compiled binary.
-- It is skipped during `dvm update`, which says all of this itself at more length.
+- It goes to **stderr**, so `dvm which --path` and `dvm list` keep handing a script exactly what it asked for on stdout.
+- A compiled binary checks; dvm running from source goes straight to the work.
+- `dvm update` says all of this itself, at more length, so it skips the one-liner.
 
 Suppress it for one invocation:
 
@@ -75,7 +69,7 @@ Suppress it for one invocation:
 dvm --no-version-check list
 ```
 
-Anything scripted against dvm wants its output to be exactly what it asked for, which is what that flag is for. In CI, where the machine cannot act on the notice anyway, it is worth setting — see [Using dvm in CI](/guides/ci).
+Anything scripted against dvm wants its output to be exactly what it asked for, which is what that flag is for. In CI it is worth setting — see [Using dvm in CI](/guides/ci).
 
 ## Pinning the installer
 
@@ -83,7 +77,7 @@ Anything scripted against dvm wants its output to be exactly what it asked for, 
 curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | DVM_VERSION=0.2.0 sh
 ```
 
-Useful in a Dockerfile, where an unpinned install script means your image changes underneath you.
+Useful in a Dockerfile, where pinning the installer is what keeps the image reproducible.
 
 ## See also
 

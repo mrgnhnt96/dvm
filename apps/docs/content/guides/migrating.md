@@ -25,11 +25,11 @@ The important part: `darts/<version>` holds extracted SDKs **in exactly the layo
 curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | sh
 ```
 
-The install script writes `~/.dvm/bin/dvm`, which the older tool does not use, so nothing is overwritten and nothing is lost yet.
+The install script writes `~/.dvm/bin/dvm`, a path the older tool leaves alone, so at this point both installs sit side by side.
 
 ## Step 2 — remove the shell function
 
-**Do this before anything else, or the rest of this page will not appear to work.**
+**Do this first — it is what lets the rest of this page work.**
 
 The older dvm is installed as a shell *function*, sourced from your `.zshrc` or `.bashrc`:
 
@@ -66,7 +66,7 @@ A later `dvm migrate --clean` would delete:
   /Users/you/.dvm/.git
 ```
 
-Nothing has changed at this point.
+`--dry-run` reports and stops there, so the disk is exactly as you left it.
 
 ## Step 4 — migrate
 
@@ -74,7 +74,7 @@ Nothing has changed at this point.
 dvm migrate
 ```
 
-This moves the SDKs and stops. It does not delete anything.
+This moves the SDKs and stops there. Deleting is a separate `--clean` run.
 
 Those directories may be your only copy of those SDKs, so the command is written around that: the move happens before any deletion, a version already present in `versions/` is skipped rather than overwritten, and a move is only reported as done once the destination is verified.
 
@@ -100,7 +100,7 @@ See [The Shim and Your PATH](/getting-started/shell-setup).
 dvm migrate --clean
 ```
 
-Removes the older tool's `scripts/`, `environments/` and `.git/`. It asks first. There is no hurry — leaving them costs a few megabytes and `doctor` only warns about them.
+Removes the older tool's `scripts/`, `environments/` and `.git/`. It asks first, and you can take your time: they cost a few megabytes, and `doctor` reports them as a warning.
 
 ## What changes about your workflow
 
@@ -109,7 +109,7 @@ Removes the older tool's `scripts/`, `environments/` and `.git/`. It asks first.
 | `dvm install 2.19.6` | [`dvm install 2.19.6`](/commands/install) — same idea, [central cache](/commands/list). |
 | `dvm use 2.19.6` — switched a global environment | [`dvm use 2.19.6`](/commands/use) — writes a committed [`.dvmrc`](/versions/dvmrc) for *this project*. |
 | `dvm list` | [`dvm list`](/commands/list). |
-| Remembering which environment is active | Nothing. `cd` into a project and `dart` is that project's SDK. |
+| Remembering which environment is active | `cd` into a project and `dart` is that project's SDK. |
 | — | [`dvm which`](/commands/which) tells you which of [five rules](/versions/resolution-order) chose the SDK you got. |
 
 The headline difference is the per-project pin. The older tool has one global environment at a time; this one answers the question per directory, which is what lets two repositories on one machine disagree about their SDK and both be right.

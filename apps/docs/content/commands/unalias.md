@@ -17,7 +17,7 @@ dvm unalias work
 Removed the alias "work" (it meant 3.13.2). The SDK itself is untouched.
 ```
 
-This removes the *name* only. Nothing is deleted from `~/.dvm/versions` — for that, use [`dvm remove`](/commands/remove).
+This removes the *name*. The SDK stays in `~/.dvm/versions`; [`dvm remove`](/commands/remove) is the command for that.
 
 ## Dangling references
 
@@ -29,9 +29,9 @@ The alias "current" still points at "work". Run: dvm alias current <version>
 /Users/you/code/api/.dvmrc still pins "work". Run: dvm use <version>
 ```
 
-The global default is the important one. Once `work` is not an alias, resolution treats it as a *concrete version*, and every command outside a pinned project fails with "a version called work is not installed" — which reads like a bug rather than a consequence of the command you just ran.
+The global default is the one to act on first. Once `work` is no longer an alias, resolution reads it as a *concrete version*, so repointing the global at a version you have keeps every command outside a pinned project working.
 
-## Not an alias
+## An unrecognised name
 
 ```text
 There is no alias "work". Defined: legacy, next

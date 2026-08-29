@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install dvm with one curl command. You do not need a Dart SDK first — that is the point.
+description: Install dvm with one curl command, on a machine that has never had Dart on it.
 ---
 
 dvm ships as a single compiled binary. The install script downloads the one built for your machine, checks it against a published checksum, and puts it in `~/.dvm/bin/dvm`.
@@ -11,7 +11,7 @@ dvm ships as a single compiled binary. The install script downloads the one buil
 curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | sh
 ```
 
-That is the whole thing. There is no Dart SDK prerequisite, which is not an accident: a Dart version manager that required Dart in order to install itself would be useless on the machine that needs it most — a fresh one.
+That is the whole thing. It runs on a machine that has never had Dart on it, which is the machine a Dart version manager is most needed on: the script fetches a compiled binary, so dvm is ready before any SDK exists.
 
 The script prints where it put the binary and what to do next:
 
@@ -31,16 +31,16 @@ Then start a new shell and run  dvm setup  to install the dart shim.
 Do both of those. `~/.dvm/bin` on `PATH` is what makes `dvm` runnable; [`dvm setup`](/getting-started/shell-setup) is the separate step that makes plain `dart` follow your project pins.
 
 <Callout type="warning">
-The script installs on Linux and macOS only. On Windows, download `dvm-windows-x64.zip` from [the releases page](https://github.com/mrgnhnt96/dvm/releases) and put `dvm.exe` on your `PATH` yourself — the script tells you the same thing and exits rather than doing something half-right.
+The script covers Linux and macOS. On Windows, download `dvm-windows-x64.zip` from [the releases page](https://github.com/mrgnhnt96/dvm/releases) and put `dvm.exe` on your `PATH` — the script points you here and stops, so you always end up with a dvm that works.
 </Callout>
 
 ### What the script checks
 
-It fails loudly rather than partially, because a half-installed version manager is worse than none: you end up with a `dvm` on `PATH` that cannot do the one thing it exists for, and nothing on screen says why. Specifically it will refuse to install if:
+Three things have to hold before anything lands on disk, and the script names whichever one stopped it — so a run that finishes leaves you a working dvm:
 
-- your operating system or CPU architecture has no published binary,
-- the release asset cannot be found (usually the GitHub API's unauthenticated rate limit of 60 requests per hour per IP — set `GITHUB_TOKEN` and retry),
-- the downloaded archive's SHA-256 does not match the `.sha256` published alongside it.
+- a published binary exists for your operating system and CPU architecture,
+- the release asset is reachable (the GitHub API allows 60 unauthenticated requests per hour per IP — set `GITHUB_TOKEN` and retry if you meet that limit),
+- the downloaded archive's SHA-256 matches the `.sha256` published alongside it.
 
 ### Environment variables
 
@@ -55,11 +55,11 @@ It fails loudly rather than partially, because a half-installed version manager 
 curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | DVM_VERSION=0.2.0 sh
 ```
 
-## There is only one channel
+## How dvm reaches your machine
 
-The install script above, and [`dvm update`](/commands/update) once dvm is on your machine. That is the whole distribution story, and the constraint behind it is the tool's own subject matter: a Dart version manager cannot require the language it manages in order to install itself.
+The install script above puts dvm on a new machine, and [`dvm update`](/commands/update) keeps it current from then on. Both fetch the same compiled binary from the same GitHub Release and check it against the same published checksum, so you get the same dvm either way.
 
-There is **no Homebrew tap**, and there is not going to be one. A tap costs a second repository, a cross-repo credential that GitHub Actions does not hand out by default, and a formula-bumping job on every release — and it reaches Linux users hardly at all. An install script plus [a built-in self-updater](/guides/updating-dvm) covers everyone. See [Updating dvm](/guides/updating-dvm).
+That pairing works because a compiled binary needs nothing already installed — which is what a Dart version manager needs, since the language it manages is exactly what is missing when you arrive. See [Updating dvm](/guides/updating-dvm).
 
 ## Verify it
 
@@ -68,7 +68,7 @@ dvm --version
 dvm doctor
 ```
 
-[`dvm doctor`](/commands/doctor) is worth running now rather than later. On a fresh install it will tell you the shims are not set up yet, which is true and is the next page.
+[`dvm doctor`](/commands/doctor) is worth running now rather than later. On a fresh install it points you at the shims, which is the next page.
 
 ## What is on disk now
 
@@ -77,7 +77,7 @@ dvm doctor
   bin/dvm          the binary you just installed
 ```
 
-Nothing else exists yet. `versions/`, `shims/` and `config.json` are created by the commands that need them.
+`versions/`, `shims/` and `config.json` arrive as the commands that need them run.
 
 ## Next steps
 
