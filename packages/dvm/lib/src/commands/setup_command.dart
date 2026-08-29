@@ -5,25 +5,49 @@ import 'package:file/file.dart';
 
 import '../core/context.dart';
 import '../core/exceptions.dart';
+import '../core/path_line.dart';
 import '../core/shell.dart';
 import '../core/shims.dart';
 
 /// `dvm setup` — Install the shims and print the PATH line to add.
 ///
 /// Writes the shim, then tells the user the one line to add to their shell's
-/// startup file. It deliberately does **not** edit that file: a version manager
-/// that rewrites `.zshrc` behind someone's back is a version manager people
-/// stop trusting, and the line differs enough between shells and setups that
-/// getting it wrong silently breaks their login shell.
+/// startup file. By default it deliberately does **not** edit that file: a
+/// version manager that rewrites `.zshrc` behind someone's back is a version
+/// manager people stop trusting, and the line differs enough between shells
+/// and setups that getting it wrong silently breaks their login shell.
+///
+/// `--write-path-line` is the escape hatch for a user who would rather dvm did
+/// it: it backs the file up, writes the line between markers so it can be
+/// found again, and `--remove-path-line` takes it back out.
 class SetupCommand extends Command<int> {
-  SetupCommand({required this.context, String Function()? dvmExecutable})
-      : _dvmExecutable = dvmExecutable ?? _resolvedExecutable {
-    argParser.addOption(
-      'dvm-path',
-      valueHelp: 'path',
-      help: 'The dvm binary to bake into the shim. Defaults to the running '
-          'one; needed when running from source.',
-    );
+  SetupCommand({
+    required this.context,
+    String Function()? dvmExecutable,
+    DateTime Function()? now,
+  })  : _dvmExecutable = dvmExecutable ?? _resolvedExecutable,
+        _now = now ?? DateTime.now {
+    argParser
+      ..addOption(
+        'dvm-path',
+        valueHelp: 'path',
+        help: 'The dvm binary to bake into the shim. Defaults to the running '
+            'one; needed when running from source.',
+      )
+      ..addFlag(
+        'write-path-line',
+        negatable: false,
+        help: 'Add the PATH line to your shell startup file instead of just '
+            'printing it. Backs the file up first, and does nothing if the '
+            'line is already there. Not available for PowerShell, which takes '
+            'PATH from your environment rather than a startup file.',
+      )
+      ..addFlag(
+        'remove-path-line',
+        negatable: false,
+        help: 'Take the PATH line --write-path-line added back out, leaving '
+            'the shims in place. A line you added by hand is left alone.',
+      );
   }
 
   final DvmContext context;
@@ -31,6 +55,10 @@ class SetupCommand extends Command<int> {
   /// Where the running dvm binary is. Injected so a test can drive `setup`
   /// without the answer depending on how the test runner was launched.
   final String Function() _dvmExecutable;
+
+  /// The clock behind the backup file's name, injected so a test can assert on
+  /// the exact path the user is told about.
+  final DateTime Function() _now;
 
   static String _resolvedExecutable() => io.Platform.resolvedExecutable;
 
@@ -42,6 +70,21 @@ class SetupCommand extends Command<int> {
 
   @override
   Future<int> run() async {
+    final results = argResults!;
+    final write = results.flag('write-path-line');
+    final remove = results.flag('remove-path-line');
+    if (write && remove) {
+      throw ConfigException(
+        '--write-path-line and --remove-path-line ask for opposite things. '
+        'Pass one of them.',
+      );
+    }
+
+    // Removal is the inverse of the flag and nothing else: it does not write
+    // shims, so it does not need a dvm binary to point them at, and it works
+    // from a source checkout the way an undo should.
+    if (remove) return _removePathLine();
+
     final binary = _resolveDvmBinary();
     final writer = ShimWriter(
       fileSystem: context.fileSystem,
@@ -54,16 +97,33 @@ class SetupCommand extends Command<int> {
       ..writeln('  -> ${binary.path} exec dart')
       ..writeln();
 
-    _printPathInstructions();
-    final conflicts = _reportConflicts();
+    final shell = _shell();
+    final scan = shell.scanForShadows();
+
+    var declined = false;
+    if (write) {
+      // A shadow beats PATH outright and an unreadable startup file may be
+      // the one holding it, so writing would look like success while changing
+      // nothing. `_reportConflicts` prints the specifics just below.
+      declined = !_writePathLine(
+        shell,
+        blocked: scan.shadows.isNotEmpty || scan.unreadable.isNotEmpty,
+      );
+    } else {
+      _printPathInstructions(shell);
+    }
+
+    final conflicts = _reportConflicts(scan);
 
     context.out
       ..writeln()
       ..writeln('Then check it with: dvm doctor');
 
     // A conflict makes the shim inert, so `setup` reporting success would be
-    // a lie the user only finds out about the next time they run `dart`.
-    return conflicts ? 1 : 0;
+    // a lie the user only finds out about the next time they run `dart`. A
+    // `--write-path-line` that declined to write fails for the same reason:
+    // the user asked for the line to be there and it is not.
+    return conflicts || declined ? 1 : 0;
   }
 
   /// The dvm binary to bake into the shim.
@@ -113,12 +173,13 @@ class SetupCommand extends Command<int> {
     return segment == 'dart' || segment == 'dart.exe';
   }
 
+  ShellFacts _shell() => ShellFacts(
+        fileSystem: context.fileSystem,
+        environment: context.environment,
+      );
+
   /// The PATH line, named for the shell the user is actually in.
-  void _printPathInstructions() {
-    final shell = ShellFacts(
-      fileSystem: context.fileSystem,
-      environment: context.environment,
-    );
+  void _printPathInstructions(ShellFacts shell) {
     final line = shell.pathLine(context.paths.shimsDir);
     final rcFile = shell.primaryRcFile;
 
@@ -161,6 +222,133 @@ class SetupCommand extends Command<int> {
           'the file.');
   }
 
+  /// Adds the PATH line to the startup file. Returns whether it got there.
+  bool _writePathLine(ShellFacts shell, {required bool blocked}) {
+    final editor = _editorFor(shell);
+    if (editor == null) return false;
+
+    if (blocked) {
+      context.err
+        ..writeln('Not writing the PATH line: something in your startup files '
+            'would beat it, or dvm could not read a file that might. A shell '
+            'function or alias is resolved before PATH is ever searched, so '
+            'the line would change nothing while looking like it worked.')
+        ..writeln('Sort out the warnings below, then run this again.');
+      return false;
+    }
+
+    final result = editor.install();
+    switch (result.outcome) {
+      case PathLineOutcome.alreadyPresent:
+        context.out.writeln(
+          '${editor.rcFile.path} already puts ${context.paths.shimsDir.path} '
+          'on PATH (line ${result.line}), so there is nothing to add.',
+        );
+      case PathLineOutcome.created:
+        context.out
+          ..writeln('Created ${editor.rcFile.path} with:')
+          ..writeln()
+          ..writeln('  ${editor.line}');
+        _explainNextShell(editor);
+      case PathLineOutcome.written:
+        context.out
+          ..writeln('Backed up ${editor.rcFile.path} '
+              '-> ${result.backup!.path}')
+          ..writeln('Added this line to ${editor.rcFile.path}:')
+          ..writeln()
+          ..writeln('  ${editor.line}');
+        _explainNextShell(editor);
+      case PathLineOutcome.removed:
+      case PathLineOutcome.foreign:
+      case PathLineOutcome.absent:
+        throw StateError('install() cannot report ${result.outcome}');
+    }
+    return true;
+  }
+
+  void _explainNextShell(PathLineEditor editor) {
+    context.out
+      ..writeln()
+      ..writeln('It takes effect in shells started after this. For the one '
+          'you are in: source ${editor.rcFile.path}')
+      ..writeln('Undo it with: dvm setup --remove-path-line');
+  }
+
+  /// Takes dvm's PATH line back out. Returns the command's exit code.
+  int _removePathLine() {
+    final shell = _shell();
+    final editor = _editorFor(shell);
+    if (editor == null) return 1;
+
+    final result = editor.remove();
+    switch (result.outcome) {
+      case PathLineOutcome.removed:
+        context.out
+          ..writeln('Backed up ${editor.rcFile.path} '
+              '-> ${result.backup!.path}')
+          ..writeln('Removed dvm\'s PATH line from ${editor.rcFile.path}.')
+          ..writeln('Shells started after this will no longer find the shims. '
+              'The shims themselves are still in '
+              '${context.paths.shimsDir.path}.');
+      case PathLineOutcome.foreign:
+        // Reported rather than removed, and still a success: the file is in
+        // the state the user put it in, and the one thing dvm knows for sure
+        // is that it did not write this line.
+        context.out
+          ..writeln('${editor.rcFile.path} puts '
+              '${context.paths.shimsDir.path} on PATH at line ${result.line}, '
+              'but dvm did not write that line — there are no dvm markers '
+              'around it — so it has been left as it is.')
+          ..writeln('Remove it by hand if you want it gone.');
+      case PathLineOutcome.absent:
+        context.out.writeln(
+          'There is no dvm PATH line in ${editor.rcFile.path}, '
+          'so there is nothing to remove.',
+        );
+      case PathLineOutcome.written:
+      case PathLineOutcome.created:
+      case PathLineOutcome.alreadyPresent:
+        throw StateError('remove() cannot report ${result.outcome}');
+    }
+    return 0;
+  }
+
+  /// An editor for the shell's startup file, or null once it has said why
+  /// there is no file to edit.
+  PathLineEditor? _editorFor(ShellFacts shell) {
+    if (shell.kind == ShellKind.powershell) {
+      context.err
+        ..writeln('PowerShell takes PATH from your environment rather than '
+            'from a startup file, so there is no line for dvm to write. Run '
+            'this once instead:')
+        ..writeln()
+        ..writeln('  ${shell.pathLine(context.paths.shimsDir)}');
+      return null;
+    }
+
+    final rcFile = shell.primaryRcFile;
+    if (rcFile == null) {
+      // No HOME and no USERPROFILE: a container, or a hand-built environment.
+      // Guessing at a path here is how dvm would write to somewhere nobody
+      // reads, so name the line and let the user place it.
+      context.err
+        ..writeln('Neither \$HOME nor \$USERPROFILE is set, so dvm cannot tell '
+            'which startup file is yours. Add this line to it yourself:')
+        ..writeln()
+        ..writeln('  ${shell.pathLine(context.paths.shimsDir)}');
+      return null;
+    }
+
+    return PathLineEditor(
+      fileSystem: context.fileSystem,
+      rcFile: rcFile,
+      line: shell.pathLine(context.paths.shimsDir),
+      shimsPath: context.paths.shimsDir.path,
+      homePath: shell.home?.path,
+      now: _now,
+    );
+  }
+
   /// Says loudly when something already on this machine will beat the shim.
   ///
   /// Returns whether anything was found. This is the case the maintainer's own
@@ -168,12 +356,7 @@ class SetupCommand extends Command<int> {
   /// a *shell function* sourced from `.zshrc`. A function beats every binary on
   /// PATH, so without this warning the user installs dvm, types `dvm`, and gets
   /// the other tool with nothing to explain why.
-  bool _reportConflicts() {
-    final shell = ShellFacts(
-      fileSystem: context.fileSystem,
-      environment: context.environment,
-    );
-    final scan = shell.scanForShadows();
+  bool _reportConflicts(ShellScan scan) {
     final legacy = LegacyDvmInstall.detect(context.paths);
     var found = false;
 
