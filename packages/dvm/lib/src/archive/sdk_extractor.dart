@@ -2,7 +2,6 @@ import 'dart:io' as io;
 
 import 'package:archive/archive.dart';
 import 'package:file/file.dart';
-import 'package:path/path.dart' as p;
 
 import 'dart_archive_exception.dart';
 
@@ -149,8 +148,18 @@ class NoopModeApplier implements ModeApplier {
 /// give `versions/3.13.2/dart-sdk/bin/dart`. Finding `bin/` instead of
 /// hardcoding the wrapper's name keeps this working if it is ever dropped.
 Directory sdkRootWithin(Directory extracted, String dartExecutableName) {
+  // The CANDIDATE's own path context, not the top-level `p`. The latter is
+  // whatever style the host runs, and this function is handed a directory that
+  // may belong to an injected filesystem with a style of its own. Joining with
+  // the host's separator produced the literal filename `bin\dart` on a
+  // posix-style filesystem when the suite first ran on Windows, and every
+  // install in the suite failed with "no bin/dart was found in it".
   bool looksLikeSdk(Directory candidate) => candidate.fileSystem
-      .file(p.join(candidate.path, 'bin', dartExecutableName))
+      .file(candidate.fileSystem.path.join(
+        candidate.path,
+        'bin',
+        dartExecutableName,
+      ))
       .existsSync();
 
   if (looksLikeSdk(extracted)) return extracted;

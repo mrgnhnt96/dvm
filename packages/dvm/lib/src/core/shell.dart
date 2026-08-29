@@ -9,6 +9,15 @@ enum ShellKind {
   bash('bash'),
   fish('fish'),
 
+  /// Windows' own shell, where PATH is an environment setting rather than a
+  /// line in a startup file.
+  ///
+  /// Chosen on Windows when `$SHELL` says nothing. A Windows user who IS in a
+  /// POSIX shell — Git Bash and MSYS both set `$SHELL` — gets the shell they
+  /// are actually in, which is the whole reason this is not simply "the host
+  /// is Windows".
+  powershell('powershell'),
+
   /// Anything else, including "the environment did not say".
   posix('sh');
 
@@ -154,8 +163,14 @@ class ShellFacts {
       ShellKind.bash => const ['.bashrc'],
       ShellKind.fish => const ['.config', 'fish', 'config.fish'],
       ShellKind.posix => const ['.profile'],
+      // PowerShell has a profile, but it is not where PATH belongs and its
+      // location differs between Windows PowerShell and PowerShell 7. The
+      // line [pathLine] hands out edits the environment directly, so there is
+      // no file to name and naming one anyway would send the user to the
+      // wrong place.
+      ShellKind.powershell => null,
     };
-    return _inHome(names);
+    return names == null ? null : _inHome(names);
   }
 
   /// Every startup file worth scanning for a shadowing definition.
@@ -190,8 +205,34 @@ class ShellFacts {
         // fish_add_path is idempotent and does the right thing with the
         // universal path variable, which a bare `set -gx` does not.
         ShellKind.fish => 'fish_add_path --prepend ${shims.path}',
+        ShellKind.powershell => _powerShellPathLine(shims),
         _ => 'export PATH="${shims.path}:\$PATH"',
       };
+
+  /// How the user makes [pathLine] take effect, as the start of a sentence.
+  ///
+  /// A POSIX shell reads a startup file, so the line goes IN one. PowerShell
+  /// takes PATH from the user's environment, so the line is a command that
+  /// EDITS it, and telling someone to paste a command into a file they do not
+  /// have is how a working tool looks broken.
+  String get pathLineAction => kind == ShellKind.powershell
+      ? 'Run this once in PowerShell'
+      : 'Add it to your shell startup file';
+
+  /// Prepends [shims] to the user's persistent PATH.
+  ///
+  /// The `User` scope rather than `Machine`: dvm installs per user and this
+  /// needs no elevation. `setx` would be shorter and is the usual advice, but
+  /// it truncates the value at 1024 characters, which silently destroys a PATH
+  /// that has grown past it.
+  String _powerShellPathLine(Directory shims) {
+    // Doubling is PowerShell's escape for a quote inside a single-quoted
+    // string. A path is unlikely to contain one and a mangled PATH line is a
+    // bad way to find out.
+    final path = shims.path.replaceAll("'", "''");
+    return "[Environment]::SetEnvironmentVariable('Path', '$path;' + "
+        "[Environment]::GetEnvironmentVariable('Path', 'User'), 'User')";
+  }
 
   /// Reads every candidate startup file, looking for something that would win
   /// over the `dvm` binary on PATH.
@@ -260,7 +301,14 @@ class ShellFacts {
 
   ShellKind _detectKind() {
     final path = shellPath;
-    if (path == null) return ShellKind.posix;
+    if (path == null) {
+      // On Windows the absence of $SHELL is itself the answer: cmd and
+      // PowerShell do not set it, and both take PATH from the environment
+      // rather than from a startup file.
+      return fileSystem.path.style == p.Style.windows
+          ? ShellKind.powershell
+          : ShellKind.posix;
+    }
     // Basename, because $SHELL is a path: /bin/zsh, /opt/homebrew/bin/fish.
     final name = p.posix.basename(path).toLowerCase();
     for (final kind in ShellKind.values) {

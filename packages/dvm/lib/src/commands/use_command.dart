@@ -2,7 +2,7 @@ import 'package:args/command_runner.dart';
 import 'package:file/file.dart';
 
 import '../core/context.dart';
-import '../core/exceptions.dart';
+import '../core/project_link.dart';
 import 'version_ref.dart';
 
 /// `dvm use` — Pin a version for this project and write .dvmrc.
@@ -142,26 +142,15 @@ class UseCommand extends Command<int> {
   /// directory — take it as a parameter rather than reading
   /// `context.workingDirectory` here, or a nested `dvm use` starts leaving
   /// stray links that no later repin can reach.
-  Link _linkProjectSdk(Directory project, String version) {
-    final target = context.paths.versionDir(version);
-    final link = context.paths.projectSdkLink(project);
-    context.paths.projectDvmDir(project).createSync(recursive: true);
-
-    // followLinks: false — an existing link whose target was removed still
-    // has to be replaced, and following it would report it as missing.
-    final existing = context.fileSystem.typeSync(link.path, followLinks: false);
-    if (existing == FileSystemEntityType.link) {
-      link.deleteSync();
-    } else if (existing != FileSystemEntityType.notFound) {
-      throw ConfigException(
-        '${link.path} already exists and is not a symlink, so dvm will not '
-        'replace it. Delete it and run this again.',
+  ///
+  /// The creating is [linkProjectSdk]'s: on Windows a plain symlink needs a
+  /// privilege an ordinary account does not have, and the fallback that makes
+  /// `dvm use` work there is a paragraph of platform detail that has nothing
+  /// to do with pinning a version.
+  Link _linkProjectSdk(Directory project, String version) => linkProjectSdk(
+        link: context.paths.projectSdkLink(project),
+        target: context.paths.versionDir(version),
       );
-    }
-
-    link.createSync(target.path);
-    return link;
-  }
 
   /// Says whether `.dvm/` is ignored, and adds it when asked to.
   ///
