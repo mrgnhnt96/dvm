@@ -3,7 +3,7 @@ description: >
   A per-project Dart SDK version manager. Keeps every SDK in one central
   cache, pins a version per project with .dvmrc, and forwards commands to
   the right SDK. Installs the `dvm` executable.
-version: 0.1.0-dev
+version: 0.1.0
 repository: https://github.com/mrgnhnt96/dvm
 issue_tracker: https://github.com/mrgnhnt96/dvm/issues
 documentation: https://mrgnhnt.com/dvm/

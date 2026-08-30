@@ -12,7 +12,7 @@
 library;
 
 /// The version of this build of dvm.
-const String kVersion = '0.1.0-dev';
+const String kVersion = '0.1.0';
 
 /// Whether this process is an AOT binary produced by the release build.
 ///
