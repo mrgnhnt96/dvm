@@ -12,15 +12,12 @@ environment:
   # packages/dvm supports. This app is never shipped to a user's machine, only
   # built in CI, so it is free to ask for a newer toolchain than the CLI does.
   #
-  # Two things set the floor. 3.8 is where null-aware elements (`[?maybeNull]`)
-  # landed — jaspr's own components use them and so does this app's layout; on
-  # 3.6 the build fails inside jaspr_builder with a ParallelWaitError that never
-  # names the language version. 3.10 is jaspr_search's own floor, and it is the
-  # binding one: stated here rather than left to be discovered, because pub only
-  # checks a dependency's SDK constraint against the SDK you happen to be
-  # running, so a machine on 3.9 would fail at `dart pub get` with a message
-  # about jaspr_search rather than about this app.
-  sdk: ^3.10.0
+  # 3.8 is where null-aware elements (`[?maybeNull]`) landed — jaspr's own
+  # components use them and so does this app's layout — and that is what sets
+  # this floor. On 3.6 the build fails inside jaspr_builder with a
+  # ParallelWaitError that never names the language version, so the requirement
+  # is stated here where a reader will find it.
+  sdk: ^3.8.0
 
 dependencies:
   # jaspr and jaspr_builder are pinned to the SAME exact version, and
@@ -57,7 +54,7 @@ dependencies:
   jaspr_search:
     git:
       url: https://github.com/mrgnhnt96/jaspr_search.git
-      ref: 6981193d2980d928d384100a4fffae23c8058633
+      ref: ddc628d26847565c77934e149a48a67bc02ccb72
 
 dev_dependencies:
   build_runner: ^2.10.0
