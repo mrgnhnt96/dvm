@@ -501,8 +501,8 @@ packages:
     dependency: transitive
     description:
       path: "."
-      ref: "6981193d2980d928d384100a4fffae23c8058633"
-      resolved-ref: "6981193d2980d928d384100a4fffae23c8058633"
+      ref: ddc628d26847565c77934e149a48a67bc02ccb72
+      resolved-ref: ddc628d26847565c77934e149a48a67bc02ccb72
       url: "https://github.com/mrgnhnt96/jaspr_search.git"
     source: git
     version: "0.2.0"
