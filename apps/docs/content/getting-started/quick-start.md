@@ -61,15 +61,15 @@ dvm use 3.13.2
 Pinned Dart 3.13.2 for /Users/you/code/my-project.
   /Users/you/code/my-project/.dvmrc -> commit this
   /Users/you/code/my-project/.dvm/dart_sdk -> /Users/you/.dvm/versions/3.13.2 (for your IDE; do not commit it)
-`.dvm/` is not ignored yet. Add it with: dvm use 3.13.2 --gitignore
+`.dvm/` is not ignored yet by /Users/you/code/my-project/.gitignore. Add it with: dvm use 3.13.2 --gitignore
 ```
 
 Two files were written, and the difference between them matters:
 
 - **`.dvmrc`** is the pin. It is two lines of JSON and you **commit it**. It is what makes the pin apply to everyone who clones the repository.
-- **`.dvm/dart_sdk`** is a symlink into your own `~/.dvm`, for IDEs that want an SDK path. It is machine-local and you **do not commit it**. `dvm use --gitignore` adds the rule for you.
+- **`.dvm/dart_sdk`** is a link into your own `~/.dvm`, for IDEs that want an SDK path. It is machine-local and you **do not commit it**. `dvm use --gitignore` adds the rule for you.
 
-`dvm use` installs the version first if you do not have it yet, so one command covers both.
+`dvm use` installs the version first if you do not have it yet, so one command covers both. It also writes both files into the directory that holds the pin: run it deeper in a project that already has a `.dvmrc` above you and it updates that one, naming the file it changed. [`dvm use`](/commands/use) has the detail.
 
 ## 4. Watch `dart` follow the pin
 

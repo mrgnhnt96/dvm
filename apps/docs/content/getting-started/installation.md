@@ -3,7 +3,7 @@ title: Installation
 description: Install dvm with one curl command, on a machine that has never had Dart on it.
 ---
 
-dvm ships as a single compiled binary. The install script downloads the one built for your machine, checks it against a published checksum, and puts it in `~/.dvm/bin/dvm`.
+dvm ships as a single compiled binary, built for Linux, macOS and Windows. The install script downloads the one for your machine, checks it against a published checksum, and puts it in `~/.dvm/bin/dvm`.
 
 ## The install script
 
@@ -30,9 +30,11 @@ Then start a new shell and run  dvm setup  to install the dart shim.
 
 Do both of those. `~/.dvm/bin` on `PATH` is what makes `dvm` runnable; [`dvm setup`](/getting-started/shell-setup) is the separate step that makes plain `dart` follow your project pins.
 
-<Callout type="warning">
-The script covers Linux and macOS. On Windows, download `dvm-windows-x64.zip` from [the releases page](https://github.com/mrgnhnt96/dvm/releases) and put `dvm.exe` on your `PATH` — the script points you here and stops, so you always end up with a dvm that works.
-</Callout>
+### On Windows
+
+The `curl` script is what a POSIX shell runs, so Windows gets its binary straight from the release. Download `dvm-windows-x64.zip` from [the releases page](https://github.com/mrgnhnt96/dvm/releases), unpack it, and put `dvm.exe` somewhere on your `PATH` — `%USERPROFILE%\.dvm\bin` keeps it beside everything else dvm writes. If you do run the script from Git Bash it points you here and stops, so you end up with a dvm that works either way.
+
+From there every command is the same one you would type anywhere else. [`dvm setup`](/commands/setup) writes `dart.bat` and hands you a PowerShell line that puts the shims on your user `PATH`; see [On Windows](/getting-started/shell-setup#on-windows) for what that looks like.
 
 ### What the script checks
 
