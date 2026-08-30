@@ -127,6 +127,106 @@ check "nothing matching gives nothing" "" "$(
 
 check "no releases at all gives nothing" "" "$(printf '[]' | pick_tag "${asset}")"
 
+# A tag that LOOKS like a prerelease but is not flagged as one. This is the
+# shape of the very first release: packages/dvm/pubspec.yaml says 0.1.0-dev, and
+# the publish step passes no --prerelease, so GitHub records prerelease: false.
+# The filter above is on the FLAG and never on the tag string, so this is picked
+# — which is the answer to "would a 0.1.0-dev release be installable at all".
+# Pinned as a test because reading the greps invites the opposite conclusion.
+check "dev-suffixed tag is picked when the flag is false" "v0.1.0-dev" "$(
+  releases "$(release v0.1.0-dev false false "${asset}")" | pick_tag "${asset}"
+)"
+
+# ...and the flag, when it IS set, is what does the skipping.
+check "dev-suffixed tag is skipped when the flag is true" "" "$(
+  releases "$(release v0.1.0-dev false true "${asset}")" | pick_tag "${asset}"
+)"
+
+# --- picking a release, as GitHub ACTUALLY sends it ---------------------------
+
+# Everything above is one line of JSON, and the real API is not: GitHub
+# pretty-prints /releases across tens of thousands of lines. That difference
+# used to be invisible here and fatal in production — pick_tag matched nothing
+# on a real response, and install.sh reported it as "no release carries this
+# asset", which reads like a rate limit. The `tr` in pick_tag is what handles
+# it; these fixtures are the reason it cannot quietly go away again.
+#
+# Indentation and key order below are copied from a real
+# api.github.com/repos/.../releases body.
+release_pretty() {
+  # release_pretty <tag> <draft> <prerelease> <asset-name>
+  printf '  {\n'
+  printf '    "url": "https://api.github.com/repos/x/y/releases/1",\n'
+  printf '    "id": 1,\n'
+  printf '    "tag_name": "%s",\n' "$1"
+  printf '    "name": "some release title",\n'
+  printf '    "draft": %s,\n' "$2"
+  printf '    "prerelease": %s,\n' "$3"
+  printf '    "assets": [\n'
+  printf '      {\n'
+  printf '        "name": "%s",\n' "$4"
+  printf '        "browser_download_url": "http://x/%s"\n' "$4"
+  printf '      }\n'
+  printf '    ]\n'
+  printf '  }'
+}
+
+releases_pretty() {
+  printf '[\n'
+  first=1
+  for entry in "$@"; do
+    [ "${first}" = 1 ] || printf ',\n'
+    first=0
+    printf '%s' "${entry}"
+  done
+  printf '\n]\n'
+}
+
+check "pretty: newest release wins" "v0.3.0" "$(
+  releases_pretty \
+    "$(release_pretty v0.3.0 false false "${asset}")" \
+    "$(release_pretty v0.2.0 false false "${asset}")" \
+    | pick_tag "${asset}"
+)"
+
+check "pretty: draft skipped" "v0.2.0" "$(
+  releases_pretty \
+    "$(release_pretty v0.9.0 true false "${asset}")" \
+    "$(release_pretty v0.2.0 false false "${asset}")" \
+    | pick_tag "${asset}"
+)"
+
+check "pretty: prerelease skipped" "v0.2.0" "$(
+  releases_pretty \
+    "$(release_pretty v0.9.0 false true "${asset}")" \
+    "$(release_pretty v0.2.0 false false "${asset}")" \
+    | pick_tag "${asset}"
+)"
+
+check "pretty: release without our asset skipped" "v0.2.0" "$(
+  releases_pretty \
+    "$(release_pretty v0.4.0 false false "some-other-package.zip")" \
+    "$(release_pretty v0.2.0 false false "${asset}")" \
+    | pick_tag "${asset}"
+)"
+
+check "pretty: another platform's asset is not ours" "v0.2.0" "$(
+  releases_pretty \
+    "$(release_pretty v0.4.0 false false "dvm-linux-x64.zip")" \
+    "$(release_pretty v0.2.0 false false "${asset}")" \
+    | pick_tag "${asset}"
+)"
+
+check "pretty: dev-suffixed tag is picked when the flag is false" "v0.1.0-dev" "$(
+  releases_pretty "$(release_pretty v0.1.0-dev false false "${asset}")" \
+    | pick_tag "${asset}"
+)"
+
+check "pretty: nothing matching gives nothing" "" "$(
+  releases_pretty "$(release_pretty v0.4.0 false false "dvm-linux-x64.zip")" \
+    | pick_tag "${asset}"
+)"
+
 # --- installing, end to end ---------------------------------------------------
 
 # The download functions are shadowed to read from a fixture directory, so
@@ -203,6 +303,30 @@ else
   fi
   check "asset without a dvm installs nothing" "1" \
     "$([ -e "${workdir}/home-empty/bin/dvm" ] && echo 0 || echo 1)"
+
+  # A zip holding dvm inside a directory rather than at the root.
+  # tool/package_release_assets.sh zips from inside the binary's directory so the
+  # asset is flat, and install.sh looks for exactly "${tmp}/unpacked/dvm" — so a
+  # nested one installs nothing. updater.dart:434 takes the basename and would
+  # survive it, which is precisely why this asymmetry is worth a test: a change
+  # that nested the asset would keep `dvm update` working and silently break
+  # every FIRST install, and no unit test on either side would notice.
+  fixtures="${workdir}/nested"
+  rm -rf "${fixtures}"
+  mkdir -p "${fixtures}/build/dvm-${e2e_target}"
+  printf '#!/bin/sh\necho dvm\n' > "${fixtures}/build/dvm-${e2e_target}/dvm"
+  (cd "${fixtures}/build" && zip -q -X -r "../dvm-${e2e_target}.zip" \
+    "dvm-${e2e_target}")
+  (cd "${fixtures}" && (sha256sum "dvm-${e2e_target}.zip" 2> /dev/null \
+    || shasum -a 256 "dvm-${e2e_target}.zip") > "dvm-${e2e_target}.zip.sha256")
+
+  if DVM_HOME="${workdir}/home-nested" output="$( (main) 2>&1 )"; then
+    check "nested asset refuses" "refused" "installed anyway"
+  else
+    check "nested asset refuses" "refused" "refused"
+  fi
+  check "nested asset installs nothing" "1" \
+    "$([ -e "${workdir}/home-nested/bin/dvm" ] && echo 0 || echo 1)"
 
   unset DVM_VERSION
 fi
