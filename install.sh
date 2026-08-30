@@ -135,16 +135,27 @@ fetch_file() {
 # other than the CLI, "latest" is a release with no dvm binary in it and this
 # script downloads a 404. ARCHITECTURE.md's "Distribution" section says the same.
 #
-# HOW THE PARSING WORKS, since there is no jq on a minimal machine. The response
-# is one long line of JSON. awk splits it into one record per release by putting
-# a newline before every "tag_name" key, which works because GitHub emits a
-# release's keys in a fixed order: tag_name comes before draft, prerelease and
+# HOW THE PARSING WORKS, since there is no jq on a minimal machine. GitHub
+# pretty-prints this response across tens of thousands of lines, so `tr` folds it
+# into a single line FIRST and awk then splits it into one record per release by
+# putting a newline before every "tag_name" key. That works because GitHub emits
+# a release's keys in a fixed order: tag_name comes before draft, prerelease and
 # assets, so each record carries its own flags and its own asset list and cannot
 # borrow the next release's. Records are already newest-first, so the first one
 # that survives the filters is the answer.
+#
+# THE `tr` IS LOAD-BEARING, and tool/test_install_sh.sh pins it with a
+# pretty-printed fixture. Without it, every grep below sees a line carrying only
+# "tag_name" — never the draft flag, never the asset names — so the asset filter
+# matches nothing and this returns empty for every response GitHub actually
+# sends. The caller reports that as "no release carries this asset", which reads
+# like a rate limit on a machine where the releases are plainly there.
+# `dvm update` never had this failure: updater.dart hands the body to a real
+# JSON parser rather than to grep.
 pick_tag() {
   pick_asset="$1"
-  awk '{ gsub(/"tag_name"/, "\n&"); print }' \
+  tr '\n' ' ' \
+    | awk '{ gsub(/"tag_name"/, "\n&"); print }' \
     | grep '"tag_name"' \
     | grep -v '"draft"[[:space:]]*:[[:space:]]*true' \
     | grep -v '"prerelease"[[:space:]]*:[[:space:]]*true' \
