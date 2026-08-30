@@ -123,6 +123,31 @@ It works, and it is the right choice when the build runs scripts you did not wri
 
 Note the order: shims go [ahead of everything else on `PATH` that supplies a `dart`](/getting-started/shell-setup). GitHub's `$GITHUB_PATH` prepends, so the *last* line written ends up first — writing `shims` then `bin` gives you `bin` first, which works fine. Confirm it with `dvm doctor`.
 
+## On a Windows runner
+
+The same three steps, with the release zip in place of the install script — see [Installation](/getting-started/installation#on-windows) for where the binary comes from. Name the dvm version, the way the Dockerfile above does, so the job installs the same dvm every time:
+
+```yaml
+- name: Install dvm
+  shell: pwsh
+  env:
+    DVM_VERSION: v0.2.0
+  run: |
+    $zip = "$env:RUNNER_TEMP\dvm.zip"
+    Invoke-WebRequest -OutFile $zip -Uri `
+      "https://github.com/mrgnhnt96/dvm/releases/download/$env:DVM_VERSION/dvm-windows-x64.zip"
+    Expand-Archive $zip -DestinationPath "$env:USERPROFILE\.dvm\bin"
+    "$env:USERPROFILE\.dvm\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+- name: Install the pinned SDK
+  run: dvm install 3.13.2
+
+- name: Test
+  run: dvm exec dart test
+```
+
+`dvm install`, `dvm exec` and `dvm which` behave the same there as anywhere else, and the cache step above already keys on `runner.os`, so adding `windows-latest` to a matrix caches its SDKs separately without another change.
+
 ## Verify before you rely on it
 
 ```yaml

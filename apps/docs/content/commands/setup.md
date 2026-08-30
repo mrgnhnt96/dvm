@@ -1,13 +1,13 @@
 ---
 title: dvm setup
-description: Install the shims and print the PATH line to add — once per machine.
+description: Install the shims and get the PATH line — printed for you to add, or written for you with --write-path-line.
 ---
 
 ```text
-dvm setup [--dvm-path <path>]
+dvm setup [--dvm-path <path>] [--write-path-line | --remove-path-line]
 ```
 
-Writes `~/.dvm/shims/dart` (plus `dart.bat` on Windows) and tells you the one line to add to your shell's startup file.
+Writes `~/.dvm/shims/dart` (`dart.bat` on Windows) and tells you the one line that puts the shims on your `PATH` — or adds it for you, with `--write-path-line`.
 
 ```sh
 dvm setup
@@ -29,10 +29,70 @@ Then check it with: dvm doctor
 | Flag | Effect |
 | --- | --- |
 | `--dvm-path <path>` | The dvm binary to bake into the shim. Defaults to the running one; needed when running from source. |
+| `--write-path-line` | Add the PATH line to your shell startup file instead of just printing it. Backs the file up first, and leaves it alone when the line is already there. |
+| `--remove-path-line` | Take that line back out, leaving the shims in place. A line you added by hand stays yours. |
 
 ## It prints the PATH line for you
 
 It prints the exact line and names the file it belongs in, so the change to your login shell stays yours to make. See [The Shim and Your PATH](/getting-started/shell-setup) for which file each shell reads.
+
+And when you would rather dvm made the edit, `--write-path-line` does it:
+
+```sh
+dvm setup --write-path-line
+```
+
+```text
+Wrote /Users/you/.dvm/shims/dart
+  -> /Users/you/.dvm/bin/dvm exec dart
+
+Backed up /Users/you/.zshrc -> /Users/you/.zshrc.dvm-backup-20260829-154646
+Added this line to /Users/you/.zshrc:
+
+  export PATH="/Users/you/.dvm/shims:$PATH"
+
+It takes effect in shells started after this. For the one you are in: source /Users/you/.zshrc
+Undo it with: dvm setup --remove-path-line
+
+Then check it with: dvm doctor
+```
+
+It copies the file to a timestamped backup first and writes the line between `# >>> dvm >>>` and `# <<< dvm <<<`, so a second run finds it and adds nothing — and so `--remove-path-line` knows which line is dvm's:
+
+```sh
+dvm setup --remove-path-line
+```
+
+```text
+Backed up /Users/you/.zshrc -> /Users/you/.zshrc.dvm-backup-20260829-154647
+Removed dvm's PATH line from /Users/you/.zshrc.
+Shells started after this will no longer find the shims. The shims themselves are still in /Users/you/.dvm/shims.
+```
+
+A line you typed yourself is recognised too — different quoting, or `$HOME` in place of your home directory, still counts as already on `PATH` — and removal reports it and leaves it exactly as you wrote it.
+
+## On Windows
+
+PowerShell takes `PATH` from your user environment rather than from a startup file, so `dvm setup` hands you the call that sets it:
+
+```text
+Wrote C:\Users\you\.dvm\shims\dart.bat
+  -> C:\Users\you\.dvm\bin\dvm.exe exec dart
+
+Run this once in PowerShell:
+
+  [Environment]::SetEnvironmentVariable('Path', 'C:\Users\you\.dvm\shims;' + [Environment]::GetEnvironmentVariable('Path', 'User'), 'User')
+
+That edits your user PATH, so it survives a reboot. It has to go ahead of anything else that puts a dart on PATH, and it only takes effect in terminals opened after you run it.
+
+For the terminal you are in right now:
+
+  $env:Path = 'C:\Users\you\.dvm\shims;' + $env:Path
+
+Then check it with: dvm doctor
+```
+
+That writes to the `User` scope, so it needs no elevation. Git Bash and MSYS set `$SHELL`, so dvm gives them the POSIX `export` line and the startup file that shell reads.
 
 ## It needs a dvm binary to point at
 
@@ -56,9 +116,11 @@ Or name the binary: dvm setup --dvm-path <path to dvm>
 
 `dvm setup` exits **1** when it finds something that would leave the shim inert — most importantly a [shell function shadowing `dvm`](/getting-started/shell-setup), which the older `cbracken/dvm` installs. The exit code tells you at the command that wrote the shim, rather than the next time you run `dart`.
 
+`--write-path-line` exits 1 for the same reason when it holds off: a function or alias named `dvm` beats `PATH` outright, so the line would look like it worked and change nothing. It says so, leaves the file untouched, and asks you to clear the warning and run it again. `--remove-path-line` exits **0** whether it removed dvm's block, found a line you wrote yourself, or found nothing to remove.
+
 ## Re-running it
 
-Safe, and the right thing to do after moving or reinstalling the dvm binary — the shim contains an absolute path to it.
+Safe, and the right thing to do after moving or reinstalling the dvm binary — the shim contains an absolute path to it. `--write-path-line` is safe to repeat too: the second run finds the line already there and says so.
 
 ## See also
 

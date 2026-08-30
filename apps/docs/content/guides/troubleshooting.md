@@ -114,7 +114,7 @@ The `dart` on `PATH` is only half the story for editors — many want an SDK *di
 .dvm/dart_sdk -> ~/.dvm/versions/3.13.2
 ```
 
-Point the analyzer or Dart plugin at `.dvm/dart_sdk`, and it follows the pin along with everything else. Do not commit that symlink — it is an absolute path into your home directory.
+It sits in the directory that holds the `.dvmrc`, so in a monorepo look next to the pin that governs your package rather than in the package you are standing in. Point the analyzer or Dart plugin at it and it follows the pin along with everything else. Keep it out of version control — it is an absolute path into your home directory.
 
 ## The `.dvm/` symlink got committed
 

@@ -31,7 +31,7 @@ A **bare version on a single line** is also accepted, the way `.nvmrc` works, fo
 3.9.0
 ```
 
-dvm reads both. It only ever writes the JSON one, so a hand-written bare pin becomes JSON the next time you run `dvm use` in that directory.
+dvm reads both. It only ever writes the JSON one, so a hand-written bare pin becomes JSON the next time you run `dvm use` in that directory or any directory below it.
 
 ## What a pin may contain
 
@@ -64,17 +64,17 @@ my-monorepo/
 
 `dart` in `packages/api` gets 3.9.0. `dart` in `packages/tools` gets 3.13.2. Nearest wins.
 
-`dvm use` writes to the **current directory**. Running it inside one package of a monorepo pins that package, and the pin at the repository root stays exactly as it was.
+[`dvm use`](/commands/use) writes by that same walk. It updates the `.dvmrc` that governs the directory you run it in, so the file it changes is the file `dart` reads: in `packages/api` above, it updates the root pin that was covering it, and it prints the path of the file it wrote. `dvm use 3.13.2 --here` is how `packages/tools` came to have a pin of its own — it creates a `.dvmrc` in the directory you are in and names the ancestor pin it now shadows.
 
 ## The other file: `.dvm/dart_sdk`
 
-Alongside `.dvmrc`, `dvm use` creates a symlink:
+In the directory that holds the `.dvmrc`, `dvm use` creates a link:
 
 ```text
 .dvm/dart_sdk -> ~/.dvm/versions/3.9.0
 ```
 
-This is for IDEs and editors that want to be handed an SDK directory rather than a `dart` on `PATH`. Point your analyzer or plugin at `.dvm/dart_sdk` and it follows the pin along with everything else.
+This is for IDEs and editors that want to be handed an SDK directory rather than a `dart` on `PATH`. Point your analyzer or plugin at `.dvm/dart_sdk` and it follows the pin along with everything else. On Windows it is a symbolic link where the account can make one and a directory junction where it cannot; both resolve to the same SDK.
 
 **Keep it out of version control.** It is an absolute path into your own home directory, so it means something on this machine and nowhere else. Ignore it:
 
