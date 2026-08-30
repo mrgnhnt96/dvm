@@ -125,14 +125,17 @@ Note the order: shims go [ahead of everything else on `PATH` that supplies a `da
 
 ## On a Windows runner
 
-The same three steps, with the release zip in place of the install script — see [Installation](/getting-started/installation#on-windows) for where the binary comes from:
+The same three steps, with the release zip in place of the install script — see [Installation](/getting-started/installation#on-windows) for where the binary comes from. Name the dvm version, the way the Dockerfile above does, so the job installs the same dvm every time:
 
 ```yaml
 - name: Install dvm
   shell: pwsh
+  env:
+    DVM_VERSION: v0.2.0
   run: |
     $zip = "$env:RUNNER_TEMP\dvm.zip"
-    Invoke-WebRequest -Uri "https://github.com/mrgnhnt96/dvm/releases/latest/download/dvm-windows-x64.zip" -OutFile $zip
+    Invoke-WebRequest -OutFile $zip -Uri `
+      "https://github.com/mrgnhnt96/dvm/releases/download/$env:DVM_VERSION/dvm-windows-x64.zip"
     Expand-Archive $zip -DestinationPath "$env:USERPROFILE\.dvm\bin"
     "$env:USERPROFILE\.dvm\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
