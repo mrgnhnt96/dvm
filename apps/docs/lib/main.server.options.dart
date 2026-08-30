@@ -15,6 +15,7 @@ import 'package:jaspr_content/components/image.dart' as _image;
 import 'package:jaspr_content/components/sidebar_toggle_button.dart'
     as _sidebar_toggle_button;
 import 'package:jaspr_content/components/theme_toggle.dart' as _theme_toggle;
+import 'package:jaspr_search/src/search_dialog.dart' as _search_dialog;
 
 /// Default [ServerOptions] for use with your Jaspr project.
 ///
@@ -50,6 +51,10 @@ ServerOptions get defaultServerOptions => ServerOptions(
     _theme_toggle.ThemeToggle: ClientTarget<_theme_toggle.ThemeToggle>(
       'jaspr_content:theme_toggle',
     ),
+    _search_dialog.SearchDialog: ClientTarget<_search_dialog.SearchDialog>(
+      'jaspr_search:search_dialog',
+      params: __search_dialogSearchDialog,
+    ),
   },
   styles: () => [
     ..._callout.Callout.styles,
@@ -63,3 +68,16 @@ ServerOptions get defaultServerOptions => ServerOptions(
 Map<String, Object?> __zoomable_imageZoomableImage(
   _zoomable_image.ZoomableImage c,
 ) => {'src': c.src, 'alt': c.alt, 'caption': c.caption};
+Map<String, Object?> __search_dialogSearchDialog(
+  _search_dialog.SearchDialog c,
+) => {
+  'indexPath': c.indexPath,
+  'triggerLabel': c.triggerLabel,
+  'triggerAriaLabel': c.triggerAriaLabel,
+  'placeholder': c.placeholder,
+  'noResultsHint': c.noResultsHint,
+  'enableSlashShortcut': c.enableSlashShortcut,
+  'includeDefaultStyles': c.includeDefaultStyles,
+  'maxPerDoc': c.maxPerDoc,
+  'maxResults': c.maxResults,
+};

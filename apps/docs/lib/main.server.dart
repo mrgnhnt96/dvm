@@ -11,6 +11,7 @@ import 'package:jaspr_content/components/image.dart';
 import 'package:jaspr_content/components/theme_toggle.dart';
 import 'package:jaspr_content/jaspr_content.dart';
 import 'package:jaspr_content/theme.dart';
+import 'package:jaspr_search/jaspr_search.dart';
 
 import 'components/cards.dart';
 import 'components/docs_sidebar.dart';
@@ -51,6 +52,16 @@ void main() {
             // site owns its domain root, so this reaches the browser as-is.
             logo: '/images/logo.svg',
             items: [
+              // Client-side search over `web/search-index.json`, which
+              // `tool/build_search_index.dart` generates from `content/`. The
+              // index path stays RELATIVE — the component's default,
+              // `search-index.json` — and the browser resolves it against the
+              // page's `<base href>`, so a reader on any nested route still
+              // fetches the one copy at the site root.
+              const SearchDialog(
+                placeholder: 'Search the dvm docs…',
+                triggerAriaLabel: 'Search the dvm documentation',
+              ),
               // Root-absolute, like every other link on the site.
               const _GitHubLink(),
               ThemeToggle(),

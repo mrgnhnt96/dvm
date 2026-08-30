@@ -461,42 +461,51 @@ packages:
     dependency: transitive
     description:
       name: jaspr
-      sha256: "261e2095f2e158b4fc554273ac70f170c0256f19f5e30ba744f83ec5c620dc9a"
+      sha256: f3d96e5048ec3530734e5d05088f8b6ff37214a77d6f5cfd812735874e5c89d8
       url: "https://pub.dev"
     source: hosted
-    version: "0.23.2"
+    version: "0.23.3"
   jaspr_builder:
     dependency: transitive
     description:
       name: jaspr_builder
-      sha256: "4c1c6585c18b58e85f047b4543535229bc7c4cf72ebcef18b2b8536ec546cb9c"
+      sha256: c8d36889cc8a40e65015dae5b56d3a0c144e842eb89bddab1121a532760b3b7b
       url: "https://pub.dev"
     source: hosted
-    version: "0.23.2"
+    version: "0.23.3"
   jaspr_cli:
     dependency: transitive
     description:
       name: jaspr_cli
-      sha256: "2f2babc2ac58829b3ddcd1ff0a9038989156f673ac34b32594a4a53d853909ca"
+      sha256: "3aec7347b5a3621b031efae8a4d90d959f53fc4446c14b90e51e7170175ef34a"
       url: "https://pub.dev"
     source: hosted
-    version: "0.23.2"
+    version: "0.23.3"
   jaspr_content:
     dependency: transitive
     description:
       name: jaspr_content
-      sha256: "9e3dd543e9546806fd27fb6353c3cfa9d3094239949c4e21057717983b195067"
+      sha256: e47a73beb419cdbd54f92621d9d65e38c245767165fb0a6bead2b865ea778492
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.3+1"
+    version: "0.5.4"
   jaspr_router:
     dependency: transitive
     description:
       name: jaspr_router
-      sha256: "5ec42c13db34e03ef9d34bac715b2eba4a80e553c618e0263037be50db08bbe4"
+      sha256: "5c9347395d75e501f02e79469eb588534ae306db6fa556c8f26421381ac6cba7"
       url: "https://pub.dev"
     source: hosted
-    version: "0.8.3"
+    version: "0.9.0"
+  jaspr_search:
+    dependency: transitive
+    description:
+      path: "."
+      ref: "6981193d2980d928d384100a4fffae23c8058633"
+      resolved-ref: "6981193d2980d928d384100a4fffae23c8058633"
+      url: "https://github.com/mrgnhnt96/jaspr_search.git"
+    source: git
+    version: "0.2.0"
   json_annotation:
     dependency: transitive
     description:

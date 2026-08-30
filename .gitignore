@@ -18,3 +18,8 @@ doc/api/
 
 # machine-local hook config (absolute paths)
 .claude/settings.local.json
+
+# Local-only dependency overrides. In a pub workspace only the root may carry
+# dependency_overrides, and they name absolute paths to sibling clones on one
+# machine, so they never belong in a commit.
+pubspec_overrides.yaml

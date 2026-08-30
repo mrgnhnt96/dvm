@@ -69,6 +69,14 @@ void main() {
       final logo = File('${buildDir.path}/images/logo.svg');
       expect(logo.existsSync(), isTrue, reason: 'web/images/logo.svg did not reach the build output');
       expect(logo.readAsStringSync(), File('web/images/logo.svg').readAsStringSync());
+
+      // The search index is a committed artifact, not something jaspr
+      // generates, so it reaches the site the same way the logo does — by
+      // being copied out of `web/`. `tool/build_search_index.dart` writes it;
+      // `search_index_test.dart` is what checks it is not stale.
+      final index = File('${buildDir.path}/search-index.json');
+      expect(index.existsSync(), isTrue, reason: 'web/search-index.json did not reach the build output');
+      expect(index.readAsStringSync(), File('web/search-index.json').readAsStringSync());
     });
 
     // Establishes that the build's own output is already what the deployed
@@ -106,6 +114,55 @@ void main() {
       // If this ever returned 200, the server under test would answer anything
       // and every reference below would "resolve" no matter how broken it was.
       expect((await _get(origin.resolve('/no/such/page/'))).status, 404);
+    });
+
+    // THE REFERENCE THIS FILE'S OTHER TESTS CANNOT SEE. Every reference they
+    // check is an `href`/`src` attribute they read out of the HTML. The search
+    // index is fetched from Dart compiled to JavaScript, so it appears in no
+    // attribute on any page and the sweep below walks straight past it.
+    //
+    // It is also resolved differently from everything else. `SearchDialog`
+    // takes a RELATIVE path and resolves it against the page's `<base href>`,
+    // which is how one copy at the site root serves a reader standing on any
+    // route. So the check is done from a NESTED page: that is where a relative
+    // path resolved against the page instead of the base would land somewhere
+    // else entirely, and the home page is precisely where that mistake still
+    // works.
+    test('the search index is fetchable from where the dialog will ask for it', () async {
+      final page = await _get(origin.resolve('/commands/install/'));
+      expect(page.status, 200);
+
+      // The path the page actually hands the browser, read out of the client
+      // component's own serialized data. Not the constant from
+      // `main.server.dart`: that is the input to the build, and what ships is
+      // the output.
+      final indexPath = _clientParam(page.body, 'jaspr_search:search_dialog', 'indexPath');
+      expect(indexPath, isNotNull, reason: 'the search dialog is not on the page at all');
+
+      // Resolved exactly as `SearchDialog` does it: against the page's own
+      // `<base href>`, with a leading slash dropped so a root-absolute path is
+      // still taken as relative to the base.
+      final base = origin.resolve(_baseHrefIn(page.body));
+      final target = base.resolve(indexPath!.startsWith('/') ? indexPath.substring(1) : indexPath);
+
+      final response = await _get(target);
+      expect(
+        response.status,
+        200,
+        reason: 'search would be dead on the deployed site: $target is a ${response.status}',
+      );
+
+      final payload = jsonDecode(response.body) as Map<String, Object?>;
+      expect(payload['docs'], isA<List<Object?>>(), reason: '$target is served but is not a search index');
+      expect((payload['docs']! as List).length, greaterThan(0));
+    });
+
+    test('the search index is reachable only through the base, not beside every page', () async {
+      // The companion to the test above, and what stops it passing for the
+      // wrong reason. If the index were also served next to each page, the
+      // fetch would succeed however the path was resolved and the test would
+      // prove nothing about the `<base href>` doing the work.
+      expect((await _get(origin.resolve('/commands/install/search-index.json'))).status, 404);
     });
 
     // The two kinds of page that fail differently. The home page catches a
@@ -188,6 +245,30 @@ List<String> _referencesIn(String html) {
     references.add(value.split('#').first);
   }
   return references.toList();
+}
+
+/// The `<base href>` the served page carries.
+///
+/// Read rather than assumed: this is the value a browser resolves every
+/// relative reference against, so reading it is what makes the test agree with
+/// the page instead of with the source that produced it.
+String _baseHrefIn(String html) {
+  final match = RegExp(r'<base href="([^"]*)"').firstMatch(html);
+  return match == null ? '/' : match.group(1)!;
+}
+
+/// One parameter jaspr serialized for a `@client` component into the page.
+///
+/// jaspr emits `<!--@jaspr_search:search_dialog data={...}-->` ahead of a client
+/// component's markup so the browser can rehydrate it with the same arguments
+/// the server rendered it with. Reading the value back out is the only way to
+/// assert on what the page will actually DO, as opposed to what the source says
+/// it should.
+String? _clientParam(String html, String component, String name) {
+  final match = RegExp('${RegExp.escape(component)} data=(\\{.*?\\})-->', dotAll: true).firstMatch(html);
+  if (match == null) return null;
+  final data = jsonDecode(match.group(1)!) as Map<String, Object?>;
+  return data[name] as String?;
 }
 
 typedef _Response = ({int status, String body});
