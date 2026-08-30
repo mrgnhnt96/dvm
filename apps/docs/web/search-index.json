@@ -1,0 +1,1125 @@
+{
+  "v": 1,
+  "docs": [
+    {
+      "u": "/",
+      "t": "dvm",
+      "d": "What dvm is, and how the pieces fit together.",
+      "s": [
+        {
+          "b": "dvm keeps every Dart SDK you use in one central cache, lets a project pin the version it wants in a committed .dvmrc, and makes the plain dart command resolve to that version — the same way fvm does for Flutter, and nvm does for Node. One curl command, on a machine that has never had Dart on it. Install an SDK, pin a project, and watch dart follow the pin. The five rules that decide which SDK you get. Read this one first when something is wrong."
+        },
+        {
+          "h": "The whole thing in five commands",
+          "a": "the-whole-thing-in-five-commands",
+          "b": "curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh sh dvm setup write the dart shim, print the PATH line to add dvm install 3.13.2 download into ~/.dvm/versions dvm use 3.13.2 pin this project; writes .dvmrc dart --version 3.13.2, here and nowhere else dvm use writes a .dvmrc you commit. Anyone who clones the repo and has dvm installed gets the same SDK, and dart in that directory means that SDK — without them typing a dvm command at all."
+        },
+        {
+          "h": "What it is made of",
+          "a": "what-it-is-made-of",
+          "b": "One cache. Every SDK lives in ~/.dvm/versions/ , extracted once and shared by every project that pins it. Two projects on the same version cost one download. A committed pin. .dvmrc is a two-line JSON file at the root of a project. It is the only dvm file you commit. A shim on PATH. ~/.dvm/shims/dart is a two-line shell script that hands off to dvm. It is what makes plain dart — and every tool that spawns dart behind your back — respect the pin. A resolution order you can inspect. Five rules, first match wins, and dvm which tells you which one answered. See Resolution Order."
+        },
+        {
+          "h": "One machine, several projects",
+          "a": "one-machine-several-projects",
+          "b": "dvm is for a machine with more than one project on it. One repository needs the SDK it was built against; another has already moved on; a third pins an old one because a dependency has not caught up. dvm makes \"which Dart am I running?\" a property of the directory you are standing in. cd into a project and dart is that project's SDK; cd into the next one and dart is that project's SDK. Your shell profile stays out of it."
+        },
+        {
+          "h": "How it stays out of your way",
+          "a": "how-it-stays-out-of-your-way",
+          "b": "One way in, one way forward. An install script puts dvm on your machine and dvm update keeps it current — see Updating dvm. A file read per invocation. Resolution reads two small files and stats a directory, so dart stays fast, works offline, and works behind a firewall — see Resolution Order. A fallback you set once. A global default covers directories that pin nothing, while a project with a .dvmrc uses its own SDK."
+        },
+        {
+          "h": "Everything else",
+          "a": "everything-else",
+          "b": ""
+        }
+      ]
+    },
+    {
+      "u": "/getting-started/installation",
+      "t": "Installation",
+      "d": "One curl command, no Dart SDK required first.",
+      "g": "Get Started",
+      "s": [
+        {
+          "b": "dvm ships as a single compiled binary, built for Linux, macOS and Windows. The install script downloads the one for your machine, checks it against a published checksum, and puts it in ~/.dvm/bin/dvm."
+        },
+        {
+          "h": "The install script",
+          "a": "the-install-script",
+          "b": "curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh sh That is the whole thing. It runs on a machine that has never had Dart on it, which is the machine a Dart version manager is most needed on: the script fetches a compiled binary, so dvm is ready before any SDK exists. The script prints where it put the binary and what to do next: Looking up the newest dvm release... Downloading dvm-macos-arm64.zip (v0.2.0)... dvm v0.2.0 is installed at /Users/you/.dvm/bin/dvm Add this to your shell startup file (~/.zshrc, ~/.bashrc, ...): export PATH=\"/Users/you/.dvm/bin:$PATH\" Then start a new shell and run dvm setup to install the dart shim. Do both of those. ~/.dvm/bin on PATH is what makes dvm runnable; dvm setup is the separate step that makes plain dart follow your project pins."
+        },
+        {
+          "h": "On Windows",
+          "a": "on-windows",
+          "b": "The curl script is what a POSIX shell runs, so Windows gets its binary straight from the release. Download dvm-windows-x64.zip from the releases page, unpack it, and put dvm.exe somewhere on your PATH — %USERPROFILE%\\.dvm\\bin keeps it beside everything else dvm writes. If you do run the script from Git Bash it points you here and stops, so you end up with a dvm that works either way. From there every command is the same one you would type anywhere else. dvm setup writes dart.bat and hands you a PowerShell line that puts the shims on your user PATH; see On Windows for what that looks like."
+        },
+        {
+          "h": "What the script checks",
+          "a": "what-the-script-checks",
+          "b": "Three things have to hold before anything lands on disk, and the script names whichever one stopped it — so a run that finishes leaves you a working dvm: a published binary exists for your operating system and CPU architecture, the release asset is reachable (the GitHub API serves 60 requests an hour to each IP address, so a shared or busy address may need a short wait), the downloaded archive's SHA-256 matches the .sha256 published alongside it."
+        },
+        {
+          "h": "Environment variables",
+          "a": "environment-variables",
+          "b": "Variable Effect DVM_VERSION Install this version instead of the newest release. 0.2.0 and v0.2.0 both work. DVM_HOME Install under this directory instead of ~/.dvm. pin the installer itself, e.g. in a Dockerfile curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh DVM_VERSION=0.2.0 sh"
+        },
+        {
+          "h": "How dvm reaches your machine",
+          "a": "how-dvm-reaches-your-machine",
+          "b": "The install script above puts dvm on a new machine, and dvm update keeps it current from then on. Both fetch the same compiled binary from the same GitHub Release and check it against the same published checksum, so you get the same dvm either way. That pairing works because a compiled binary needs nothing already installed — which is what a Dart version manager needs, since the language it manages is exactly what is missing when you arrive. See Updating dvm."
+        },
+        {
+          "h": "Verify it",
+          "a": "verify-it",
+          "b": "dvm --version dvm doctor dvm doctor is worth running now rather than later. On a fresh install it points you at the shims, which is the next page."
+        },
+        {
+          "h": "What is on disk now",
+          "a": "what-is-on-disk-now",
+          "b": "~/.dvm/ bin/dvm the binary you just installed versions/, shims/ and config.json arrive as the commands that need them run."
+        },
+        {
+          "h": "Next steps",
+          "a": "next-steps",
+          "b": "Run dvm setup to install the dart shim, then follow the Quick Start."
+        }
+      ]
+    },
+    {
+      "u": "/getting-started/quick-start",
+      "t": "Quick Start",
+      "d": "Install an SDK, pin a project, and watch `dart` follow it.",
+      "g": "Get Started",
+      "s": [
+        {
+          "b": "This assumes dvm is installed and on your PATH. It takes about two minutes, most of which is one SDK download."
+        },
+        {
+          "h": "1. Install a Dart SDK",
+          "a": "1-install-a-dart-sdk",
+          "b": "dvm install 3.13.2 Installed Dart 3.13.2 to /Users/you/.dvm/versions/3.13.2 You can name a channel instead of a version, and dvm asks the archive what it currently means: dvm install stable The version that resolved to is recorded in ~/.dvm/config.json, which is what lets you later pin stable without dvm needing the network. See Aliases and Channels."
+        },
+        {
+          "h": "2. Set up the shim",
+          "a": "2-set-up-the-shim",
+          "b": "You only ever do this once per machine: dvm setup Wrote /Users/you/.dvm/shims/dart -> /Users/you/.dvm/bin/dvm exec dart Add this to ~/.zshrc: export PATH=\"/Users/you/.dvm/shims:$PATH\" Then check it with: dvm doctor Add that line, open a new shell, and confirm: dvm doctor The shim page explains what that file is and why its position on PATH matters."
+        },
+        {
+          "h": "3. Pin a project",
+          "a": "3-pin-a-project",
+          "b": "cd ~/code/my-project dvm use 3.13.2 Pinned Dart 3.13.2 for /Users/you/code/my-project. /Users/you/code/my-project/.dvmrc -> commit this /Users/you/code/my-project/.dvm/dart_sdk -> /Users/you/.dvm/versions/3.13.2 (for your IDE; do not commit it) .dvm/ is not ignored yet by /Users/you/code/my-project/.gitignore. Add it with: dvm use 3.13.2 --gitignore Two files were written, and the difference between them matters: .dvmrc is the pin. It is two lines of JSON and you commit it. It is what makes the pin apply to everyone who clones the repository. .dvm/dart_sdk is a link into your own ~/.dvm, for IDEs that want an SDK path. It is machine-local and you do not commit it. dvm use --gitignore adds the rule for you. dvm use installs the version first if you do not have it yet, so one command covers both. It also writes both files into the directory that holds the pin: run it deeper in a project that already has a .dvmrc above you and it updates that one, naming the file it changed. dvm use has the detail."
+        },
+        {
+          "h": "4. Watch dart follow the pin",
+          "a": "4-watch-dart-follow-the-pin",
+          "b": "dart --version Dart SDK version: 3.13.2 (stable) ... cd .. dart --version whatever applies out here — a different pin, your global default, or the system Dart The dart on your PATH is dvm's shim, and it resolves per directory on every invocation — so both answers are current, and you switched nothing."
+        },
+        {
+          "h": "5. Ask why, whenever you need to",
+          "a": "5-ask-why-whenever-you-need-to",
+          "b": "dvm which /Users/you/.dvm/versions/3.13.2/bin/dart Dart 3.13.2 Chosen by rule 2 of 5: pinned by /Users/you/code/my-project/.dvmrc. SDK: /Users/you/.dvm/versions/3.13.2 That second-to-last line is the one to remember. dvm has exactly five resolution rules, and dvm which always names the one that answered. Whenever you want to know why you got the SDK you got, this is the first command to run."
+        },
+        {
+          "h": "Where to go next",
+          "a": "where-to-go-next",
+          "b": "The five rules, in order. The page to read when you want to know why dvm picked the SDK it did. What you just committed, its format, and what a pin is allowed to contain. Give a version a name, and understand what stable means when you are offline. Get the same SDK on a build machine, without a shim or a shell profile."
+        }
+      ]
+    },
+    {
+      "u": "/getting-started/shell-setup",
+      "t": "The Shim and Your PATH",
+      "d": "What `dvm setup` writes, and the one line you add yourself.",
+      "g": "Get Started",
+      "s": [
+        {
+          "b": "The shim is what makes dvm invisible. With it on your PATH, plain dart follows your pins — and so does every tool that spawns dart behind your back."
+        },
+        {
+          "h": "What the shim is",
+          "a": "what-the-shim-is",
+          "b": "dvm setup writes exactly one file per platform. On macOS and Linux it is a two-line POSIX shell script: !/bin/sh exec /Users/you/.dvm/bin/dvm exec dart \"$@\" exec replaces the shell process rather than spawning a child, so the only cost of the indirection is starting /bin/sh plus dvm's own AOT startup — and then the real dart inherits the terminal, the exit code, and the signals directly. From there on you are talking to the SDK. On Windows it is ~/.dvm/shims/dart.bat, doing the same thing: @echo off \"C:\\Users\\you\\.dvm\\bin\\dvm.exe\" exec dart % Windows resolves a bare dart to it through PATHEXT, so cmd.exe and PowerShell both find it, and the batch file's exit code is the SDK's. That is the whole mechanism. dvm setup Wrote /Users/you/.dvm/shims/dart -> /Users/you/.dvm/bin/dvm exec dart Add this to ~/.zshrc: export PATH=\"/Users/you/.dvm/shims:$PATH\" Then check it with: dvm doctor"
+        },
+        {
+          "h": "Adding the PATH line",
+          "a": "adding-the-path-line",
+          "b": "dvm setup prints the exact line and names the file it belongs in, so the change to your login shell stays yours to make. The right file differs between shells, between login and non-login setups, and between hand-managed profiles, and you are the one who knows which of those you have. dvm setup reads $SHELL to work out which line to hand you and where it goes: Shell Where the line goes zsh (macOS default) ~/.zshrc bash ~/.bashrc, or ~/.bash_profile on macOS fish ~/.config/fish/config.fish, with fish_add_path PowerShell your user environment — see On Windows below Then start a new shell. The file is read when a shell starts, so the one you are in keeps the environment it was given."
+        },
+        {
+          "h": "Letting dvm add the line",
+          "a": "letting-dvm-add-the-line",
+          "b": "When you would rather dvm made the edit, ask for it: dvm setup --write-path-line Wrote /Users/you/.dvm/shims/dart -> /Users/you/.dvm/bin/dvm exec dart Backed up /Users/you/.zshrc -> /Users/you/.zshrc.dvm-backup-20260829-154646 Added this line to /Users/you/.zshrc: export PATH=\"/Users/you/.dvm/shims:$PATH\" It takes effect in shells started after this. For the one you are in: source /Users/you/.zshrc Undo it with: dvm setup --remove-path-line Then check it with: dvm doctor It copies the file to a timestamped backup first, and writes the line inside markers so it stays identifiable: >>> dvm >>> export PATH=\"/Users/you/.dvm/shims:$PATH\" <<< dvm <<< Run it twice and the second run finds the line and adds nothing — including a line you typed yourself in different quoting, or with $HOME in place of your home directory. dvm setup --remove-path-line takes dvm's own block back out and leaves the shims in place; a line dvm did not write is reported and left exactly as you have it. It stays opt-in because the reasoning above is still yours: dvm writes to one file, and you are the one who knows which file your login shell actually reads."
+        },
+        {
+          "h": "On Windows",
+          "a": "on-windows",
+          "b": "PowerShell takes PATH from your user environment rather than from a startup file, so dvm setup hands you the command that sets it: Run this once in PowerShell: [Environment]::SetEnvironmentVariable('Path', 'C:\\Users\\you\\.dvm\\shims;' + [Environment]::GetEnvironmentVariable('Path', 'User'), 'User') That edits your user PATH, so it survives a reboot. It has to go ahead of anything else that puts a dart on PATH, and it only takes effect in terminals opened after you run it. For the terminal you are in right now: $env:Path = 'C:\\Users\\you\\.dvm\\shims;' + $env:Path It writes to the User scope, so it needs no elevation and applies to every terminal you open afterwards. dvm doctor hands you the same line when it finds the shims missing from PATH. Git Bash and MSYS set $SHELL, so dvm gives them the POSIX export line and the startup file that shell reads — the shell you are actually in is the one dvm answers for."
+        },
+        {
+          "h": "Why the shims directory goes first",
+          "a": "why-the-shims-directory-goes-first",
+          "b": "PATH is searched left to right and the first match wins, so ~/.dvm/shims belongs ahead of every other directory that supplies a dart. That position is the whole of it. If Homebrew's dart, or a Flutter SDK's bundled dart, or /usr/local/bin/dart appears earlier in the list, that binary is found first and the shim is never reached. Your pins do nothing, and there is no error message — the symptom is dart --version reporting a version you did not ask for, with everything else apparently correct. dvm doctor checks exactly this, and reports the offending entry by path: dvm doctor"
+        },
+        {
+          "h": "The shadowing shell function",
+          "a": "the-shadowing-shell-function",
+          "b": "This is the one that costs people an afternoon, and it is why doctor exists. The older cbracken/dvm is installed as a shell function sourced from your .zshrc or .bashrc. A shell function is resolved before PATH is searched at all. So on a machine that has ever had that tool installed, typing dvm runs the old function, the new binary is never reached, and nothing on screen says why — the commands are similar enough that the errors look like your own mistakes. dvm doctor reads your shell startup files and reports it by file and line. The fix is to delete the line that sources the old tool, then start a new shell."
+        },
+        {
+          "h": "Verifying it worked",
+          "a": "verifying-it-worked",
+          "b": "dvm doctor dvm doctor ok PATH: /Users/you/.dvm/shims is on PATH ahead of every other dart. ok shims: /Users/you/.dvm/shims/dart runs /Users/you/.dvm/bin/dvm. ok shell: no shell function or alias named dvm in your startup files. ok config: /Users/you/.dvm/config.json is valid; the global default Dart 3.9.0 is installed. ok project: /Users/you/code/my-project/.dvmrc pins Dart 3.13.2, which is installed. ok project: /Users/you/code/my-project/.dvm/dart_sdk points at /Users/you/.dvm/versions/3.13.2. Everything checks out. And directly: which dart => /Users/you/.dvm/shims/dart dvm which => the SDK that resolves here, and which rule chose it If which dart reports anything other than the shim, PATH order is the problem."
+        },
+        {
+          "h": "Other commands, with the pinned SDK",
+          "a": "other-commands-with-the-pinned-sdk",
+          "b": "The shim covers dart. For any other command that should run with the pinned SDK first on its PATH — melos, a build script, your own tooling — use dvm exec: dvm exec melos bootstrap Every dart that melos goes on to spawn then resolves to the pinned SDK too, because dvm exec puts that SDK's bin first on the child's PATH."
+        }
+      ]
+    },
+    {
+      "u": "/versions/dvmrc",
+      "t": "The .dvmrc File",
+      "d": "The file you commit, its format, and what a pin may contain.",
+      "g": "Pinning Versions",
+      "s": [
+        {
+          "b": ".dvmrc is how a project says which Dart SDK it wants. It is the only dvm file that belongs in version control."
+        },
+        {
+          "h": "The format",
+          "a": "the-format",
+          "b": "Canonically it is JSON, which leaves room for the format to grow while everything already written keeps parsing: { \"dart\": \"3.9.0\" } dvm use always writes that form: dvm use 3.9.0 { \"dart\": \"3.9.0\" } A bare version on a single line is also accepted, the way .nvmrc works, for hand-editing: 3.9.0 dvm reads both. It only ever writes the JSON one, so a hand-written bare pin becomes JSON the next time you run dvm use in that directory or any directory below it."
+        },
+        {
+          "h": "What a pin may contain",
+          "a": "what-a-pin-may-contain",
+          "b": "The value is a reference. Three kinds are valid: Pin Means 3.9.0 Exactly that version. work An alias you defined with dvm alias work 3.9.0. stable The version that channel resolved to when you last ran dvm install stable. Resolving an alias or a channel name reads ~/.dvm/config.json and stops there: aliases live in that file, and a channel's concrete version was written into it at install time. See Aliases and Channels for why that matters. Pinning a channel name pins your machine's idea of what that channel means. Two people can have the same .dvmrc saying stable and be on different SDKs. For a repository other people build, pin a concrete version."
+        },
+        {
+          "h": "Where dvm looks",
+          "a": "where-dvm-looks",
+          "b": "dvm walks up from the current directory to the filesystem root and uses the first .dvmrc it finds. That is what makes a monorepo work: my-monorepo/ .dvmrc { \"dart\": \"3.9.0\" } <- applies to everything below packages/ api/ tools/ .dvmrc { \"dart\": \"3.13.2\" } <- except here dart in packages/api gets 3.9.0. dart in packages/tools gets 3.13.2. Nearest wins. dvm use writes by that same walk. It updates the .dvmrc that governs the directory you run it in, so the file it changes is the file dart reads: in packages/api above, it updates the root pin that was covering it, and it prints the path of the file it wrote. dvm use 3.13.2 --here is how packages/tools came to have a pin of its own — it creates a .dvmrc in the directory you are in and names the ancestor pin it now shadows."
+        },
+        {
+          "h": "The other file: .dvm/dart_sdk",
+          "a": "the-other-file-dvmdart_sdk",
+          "b": "In the directory that holds the .dvmrc, dvm use creates a link: .dvm/dart_sdk -> ~/.dvm/versions/3.9.0 This is for IDEs and editors that want to be handed an SDK directory rather than a dart on PATH. Point your analyzer or plugin at .dvm/dart_sdk and it follows the pin along with everything else. On Windows it is a symbolic link where the account can make one and a directory junction where it cannot; both resolve to the same SDK. Keep it out of version control. It is an absolute path into your own home directory, so it means something on this machine and nowhere else. Ignore it: dvm use 3.9.0 --gitignore which appends: dvm's per-project SDK symlink; .dvmrc is the part you commit. .dvm/ dvm edits .gitignore when you pass --gitignore, and otherwise names the rule it would add and leaves the file to you. The repository is yours, so the edit is yours to ask for."
+        },
+        {
+          "h": "A pin dvm cannot resolve is an error",
+          "a": "a-pin-dvm-cannot-resolve-is-an-error",
+          "b": "If .dvmrc cannot be parsed, or names something dvm cannot resolve, resolution fails with a message rather than quietly falling through to your global default: dvm: Dart 3.9.0 is pinned by /Users/you/code/api/.dvmrc, but it is not installed. Run: dvm install 3.9.0 So you always get the SDK the pin names, or a message naming the pin. A typo is reported where you made it, rather than turning up much later as a build that behaved oddly."
+        },
+        {
+          "h": "Checking what applies",
+          "a": "checking-what-applies",
+          "b": "dvm which names both the SDK and the .dvmrc that chose it. See Resolution Order for the full set of rules that surround this one."
+        }
+      ]
+    },
+    {
+      "u": "/versions/aliases",
+      "t": "Aliases and Channels",
+      "d": "Name a version, and what `stable` means offline.",
+      "g": "Pinning Versions",
+      "s": [
+        {
+          "b": "There are two ways a name — rather than a version number — can appear in a .dvmrc or a global default. They look similar and behave differently."
+        },
+        {
+          "h": "Aliases",
+          "a": "aliases",
+          "b": "An alias is a name you define, stored in ~/.dvm/config.json: dvm alias work 3.9.0 \"work\" now means 3.9.0. Then anywhere a version is accepted, work is too: dvm use work dvm global work dvm install work The point is repointing. When the team moves to a new SDK you change the alias once, and every project pinned to work follows: dvm alias work 3.13.2 \"work\" now means 3.13.2. was: 3.9.0 List what you have: dvm alias list Aliases in /Users/you/.dvm/config.json: legacy -> 3.4.0 (installed) work -> 3.13.2 (installed) Channels, as recorded by dvm install: stable -> 3.13.2"
+        },
+        {
+          "h": "Names dvm reserves",
+          "a": "names-dvm-reserves",
+          "b": "Some names already mean something to dvm, so it says so as you define one — which is what keeps every name in your config a name that resolves: Reserved What it already means stable, beta, dev Channel names. Resolution checks channels before aliases, so an alias with one of these names would be unreachable. Anything that looks like a version dvm would have no way to tell 3.9 the alias from 3.9 the version. list dvm alias list has to keep meaning \"show me the aliases\". Anything starting with - It reads as an option. Anything with whitespace or a path separator A name is a single word. An alias may point at another alias, and dvm follows the chain up to eight hops. A loop — including an alias pointing at itself — is reported at the command that would create it. An alias may name a version you have not installed yet — writing the alias first is a reasonable thing to do — and dvm tells you right then, with the command that fills the gap: \"next\" now means 3.14.0. Dart 3.14.0 is not installed. Run: dvm install 3.14.0 Remove one with dvm unalias. That deletes the name only; the SDK is untouched."
+        },
+        {
+          "h": "Channels",
+          "a": "channels",
+          "b": "stable, beta and dev are Dart's release channels. dvm knows all three already, so you name one and it does the rest. When you run dvm install stable, dvm asks the Dart archive what stable currently is, installs it, and writes down the answer in ~/.dvm/config.json: { \"channels\": { \"stable\": \"3.13.2\" } } From then on, a pin of stable means 3.13.2 on this machine — until you run dvm install stable again."
+        },
+        {
+          "h": "What a channel name means on your machine",
+          "a": "what-a-channel-name-means-on-your-machine",
+          "b": "This is the design decision that shapes the whole tool. Version resolution runs on every single dart invocation on the machine once the shim is installed, so it answers a channel name out of config.json. stable means the version recorded the last time you ran dvm install stable — the same answer at full speed, on a plane, and behind a firewall. The network is reached at exactly two moments, both of which you ask for by name: dvm install — asks what the channel means now, and records it. dvm list-remote — lists what is available. Everything else reads config.json. The practical consequence: your stable moves when you move it. Run dvm install stable to take the newest one. For a repository other people build, pin a concrete version, so everyone gets the same SDK. dvm use stable reads that same record. Before your first dvm install stable it says dvm does not know which version \"stable\" is: no stable SDK has been installed on this machine, and resolving a channel name never goes to the network. Run: dvm install stable — the same rule, from the side that reads it."
+        },
+        {
+          "h": "Aliases, channels, and versions together",
+          "a": "aliases-channels-and-versions-together",
+          "b": "A pin is resolved in this order: 1. Is it a channel name (stable, beta, dev)? Use the version recorded for it. 2. Is it an alias? Follow it, and repeat — up to eight hops. 3. Otherwise it is a concrete version. Use it as written. So an alias may point at a channel: dvm alias current stable and dvm which reports the whole chain alongside the answer: Chosen by rule 2 of 5: pinned by /Users/you/code/api/.dvmrc. It says \"current\", an alias for 3.13.2 in /Users/you/.dvm/config.json."
+        }
+      ]
+    },
+    {
+      "u": "/versions/resolution-order",
+      "t": "Resolution Order",
+      "d": "The five rules, in order — the thing to read when dvm picks the wrong SDK.",
+      "g": "Pinning Versions",
+      "s": [
+        {
+          "b": "Every time you run dart through the shim, or run dvm dart or dvm exec, dvm answers one question: which SDK applies in this directory, right now? It answers it with five rules, in this order. The first one that matches wins."
+        },
+        {
+          "h": "The five rules",
+          "a": "the-five-rules",
+          "b": ""
+        },
+        {
+          "h": "1. The DVM_DART_VERSION environment variable",
+          "a": "1-the-dvm_dart_version-environment-variable",
+          "b": "DVM_DART_VERSION=3.9.0 dart --version If this variable is set and non-empty, it wins over everything on disk. It is the escape hatch for CI and for one-off commands — see Using dvm in CI. Its value is a pin like any other: a version, an alias, or a channel name."
+        },
+        {
+          "h": "2. The nearest .dvmrc",
+          "a": "2-the-nearest-dvmrc",
+          "b": "dvm walks up from the current directory to the filesystem root and uses the first .dvmrc it finds. This is the normal case and the one you want most of the time. Nearest wins, which is what makes a monorepo with a per-package override work."
+        },
+        {
+          "h": "3. The global default",
+          "a": "3-the-global-default",
+          "b": "global in ~/.dvm/config.json, set with dvm global. This is what applies in directories that pin nothing."
+        },
+        {
+          "h": "4. The next real dart on PATH",
+          "a": "4-the-next-real-dart-on-path",
+          "b": "When no rule above matched, dvm scans PATH for a dart that is not one of its own shims and hands off to that. This rule is what keeps the rest of your machine working as it did. A directory that pins nothing and has no global default runs whatever dart you already had. Under rule 4 the SDK is your own, so dvm reports the path and leaves the version to it, and leaves DVM_DART_VERSION unset for the child process — a nested dvm then runs the same five rules and reaches the same SDK."
+        },
+        {
+          "h": "5. A clear error",
+          "a": "5-a-clear-error",
+          "b": "When no rule matched, dvm says so and lists everything it checked: No Dart SDK applies in /Users/you/scratch. DVM_DART_VERSION is not set no .dvmrc here or in any parent directory no \"global\" in /Users/you/.dvm/config.json no dart on PATH that is not a dvm shim Pin one for this project: dvm use Or set a machine default: dvm global"
+        },
+        {
+          "h": "Seeing which rule answered",
+          "a": "seeing-which-rule-answered",
+          "b": "This is the point of the design, and it is why dvm which reports the rule and not just the path: dvm which /Users/you/.dvm/versions/3.13.2/bin/dart Dart 3.13.2 Chosen by rule 2 of 5: pinned by /Users/you/code/api/.dvmrc. SDK: /Users/you/.dvm/versions/3.13.2 Every rule has its own sentence: Rule What dvm which says 1 Chosen by rule 1 of 5: DVM_DART_VERSION is set in the environment, which overrides everything on disk. 2 Chosen by rule 2 of 5: pinned by /.dvmrc. 3 Chosen by rule 3 of 5: no .dvmrc applies here, so the global default in /config.json was used. 4 Chosen by rule 4 of 5: nothing pins a version here and no global default is set, so this is the next dart on PATH, found in . When a pin was indirect, the hop is spelled out too: It says \"work\", an alias for 3.13.2 in /Users/you/.dvm/config.json. dvm list prints a one-line version of the same thing under the list of installed SDKs."
+        },
+        {
+          "h": "Every resolution is two small file reads",
+          "a": "every-resolution-is-two-small-file-reads",
+          "b": "Every dart invocation on the machine pays for this path once the shim is installed, so it stays as cheap as it can be: at most two small files (.dvmrc and config.json) and one stat. That is what keeps dart through the shim as fast as dart without it — on a plane and behind a firewall as much as anywhere else. A channel name is answered from config.json here: stable means the version recorded when you last ran dvm install stable. Asking the archive what stable means today is its own command, run when you want it."
+        },
+        {
+          "h": "The shim-skipping in rule 4",
+          "a": "the-shim-skipping-in-rule-4",
+          "b": "Rule 4 skips dvm's own shims, and that is what makes rule 4 terminate. The shim is ~/.dvm/shims/dart, you are told to put that directory first on PATH, and its body is exec dvm exec dart \"$@\". A scan that took the first dart it found would find the shim, run it, and re-enter resolution — forking until the machine gave up. So rule 4 skips three things: the shims directory itself, however it is spelled in PATH (~/.dvm/shims, $HOME/.dvm/./shims/ and the absolute path are all the same directory, and all three turn up in real PATHs), a symlink pointing into the shims directory — what ln -s ~/.dvm/shims/dart ~/.local/bin/dart leaves behind, a copy of a shim, recognised by its contents, which no path comparison could catch."
+        },
+        {
+          "h": "When a pin names a version you do not have",
+          "a": "when-a-pin-names-a-version-you-do-not-have",
+          "b": "Rules 1, 2 and 3 name a version, so they can match and still have work left. When your .dvmrc pins a version you have not installed, dvm names it and gives you the command that fills the gap: dvm: Dart 3.9.0 is pinned by /Users/you/code/api/.dvmrc, but it is not installed. Run: dvm install 3.9.0 You get the SDK the project asked for, or a message naming the one it asked for. That is the guarantee the whole tool is built to give."
+        },
+        {
+          "h": "Debugging checklist",
+          "a": "debugging-checklist",
+          "b": "When you want to know how dart --version reached its answer: 1. which dart — is it ~/.dvm/shims/dart? If not, your PATH order is wrong. 2. dvm which — which rule answered, and from which file? 3. dvm doctor — PATH order, shim health, a shadowing shell function, config validity. 4. echo $DVM_DART_VERSION — rule 1 beats everything, including the .dvmrc you are looking at."
+        }
+      ]
+    },
+    {
+      "u": "/commands/install",
+      "t": "dvm install",
+      "d": "Download, verify and install a Dart SDK.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm install <version channel alias> Downloads a Dart SDK from Google's dart-archive bucket, verifies its checksum, and extracts it into ~/.dvm/versions/ . dvm install 3.13.2 Installed Dart 3.13.2 to /Users/you/.dvm/versions/3.13.2 Already installed? It says so and exits 0, straight from disk: Dart 3.13.2 is already installed at /Users/you/.dvm/versions/3.13.2"
+        },
+        {
+          "h": "Flags",
+          "a": "flags",
+          "b": "Flag Effect -f, --force Reinstall even if the version is already present."
+        },
+        {
+          "h": "What you can name",
+          "a": "what-you-can-name",
+          "b": "Argument Behavior A version — 3.13.2 Installed as written, and read straight from disk if you already have it. A channel — stable, beta, dev dvm asks the archive what that channel currently means, installs it, and records the answer in ~/.dvm/config.json. An alias — work Followed locally to whatever it points at, then installed. Naming a channel is the one form that costs a network round trip for resolution, which is the whole reason to type it: you are asking what stable means today."
+        },
+        {
+          "h": "Recording what a channel meant",
+          "a": "recording-what-a-channel-meant",
+          "b": "dvm install stable writes channels.stable into ~/.dvm/config.json. This is what makes a later dvm use stable work: version resolution answers from local files, so the concrete version is written down at install time, ready for it. Note the asymmetry: channels.stable moves only when you name the channel. Installing 3.13.2 by version leaves it where it is, even if 3.13.2 happens to be the current stable, so your stable keeps meaning whatever you last asked for."
+        },
+        {
+          "h": "How an install is made safe",
+          "a": "how-an-install-is-made-safe",
+          "b": "1. Download dartsdk- - -release.zip from the archive. 2. Verify it against the sibling .sha256sum published by Google. A mismatch aborts; nothing is installed. 3. Extract into a temporary directory under ~/.dvm/cache/. 4. Rename that directory into place as ~/.dvm/versions/ . The rename is what makes step 4 atomic: ~/.dvm/versions/ appears complete or not at all. An interrupted install leaves a partial directory in cache/, which is disposable and safe to delete at any time. Extraction also runs an explicit chmod pass on POSIX. The zip decoder carries unix permissions without applying them, so this pass is what leaves everything under bin/ executable."
+        },
+        {
+          "h": "Platforms",
+          "a": "platforms",
+          "b": "Binaries exist for macos/linux/windows on x64 and arm64, plus arm and riscv64 on Linux. dvm picks the one matching the machine it is running on."
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "dvm use — install and pin, in one command. dvm list-remote — what is available to install. dvm list — what is installed already."
+        }
+      ]
+    },
+    {
+      "u": "/commands/use",
+      "t": "dvm use",
+      "d": "Pin a version for this project and write .dvmrc.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm use [--global] [--here] The command you will type most. It updates the .dvmrc that governs the directory you are standing in — the same file dart reads — puts the .dvm/dart_sdk link for your IDE beside it, and installs the SDK first if it is missing. dvm use 3.13.2 Pinned Dart 3.13.2 for /Users/you/code/api. /Users/you/code/api/.dvmrc -> commit this /Users/you/code/api/.dvm/dart_sdk -> /Users/you/.dvm/versions/3.13.2 (for your IDE; do not commit it) .dvm/ is not ignored yet by /Users/you/code/api/.gitignore. Add it with: dvm use 3.13.2 --gitignore"
+        },
+        {
+          "h": "Flags",
+          "a": "flags",
+          "b": "Flag Effect -g, --global Set the machine-wide default instead of pinning this project. Same as dvm global. --here Pin this directory, creating a .dvmrc here even when a parent directory already has one. --gitignore Also append .dvm/ to this project's .gitignore."
+        },
+        {
+          "h": "The two files it writes",
+          "a": "the-two-files-it-writes",
+          "b": ".dvmrc — the pin. Two lines of JSON. Commit it. This is what makes the pin apply to everyone who clones the repository. .dvm/dart_sdk — a link to ~/.dvm/versions/ , for IDEs and analyzer plugins that want an SDK directory. It contains an absolute path into your home directory, so it means something on this machine and nowhere else. Keep it out of version control. Both land in the directory that holds the pin, so one .dvmrc always has exactly one link beside it — and a later dvm use from anywhere in the project brings that link along with the pin. On Windows, dvm creates a symbolic link where the account can make one and a directory junction where it cannot. A junction needs no special privilege and the filesystem resolves it itself, so an IDE opening .dvm/dart_sdk/bin/dart.exe reaches the SDK either way. If .dvm/dart_sdk already exists as something other than a link, dvm leaves it where it is and says so — whatever you put there stays yours."
+        },
+        {
+          "h": "Where the pin goes",
+          "a": "where-the-pin-goes",
+          "b": "dvm use updates the .dvmrc that applies where you are standing. It finds it with the same walk up the tree that resolution uses, so the file you change is the file dart reads, and it names that file in its output: cd ~/code/api/packages/app dvm use 3.13.2 Pinned Dart 3.13.2 for /Users/you/code/api. You are in /Users/you/code/api/packages/app, which that pin covers, so the .dvmrc above it is the one that changed. /Users/you/code/api/.dvmrc -> commit this /Users/you/code/api/.dvm/dart_sdk -> /Users/you/.dvm/versions/3.13.2 (for your IDE; do not commit it) .dvm/ is not ignored yet by /Users/you/code/api/.gitignore. Add it with: dvm use 3.13.2 --gitignore When there is a .dvmrc anywhere above you, that is the one dvm use updates. When there is none, it creates one right where you are. Either way the second line tells you which file moved, so the pin you changed and the pin in effect are always the same pin."
+        },
+        {
+          "h": "--gitignore",
+          "a": "--gitignore",
+          "b": "dvm only ever edits .gitignore when you explicitly ask: dvm use 3.13.2 --gitignore Added .dvm/ to /Users/you/code/api/.gitignore. It appends: dvm's per-project SDK symlink; .dvmrc is the part you commit. .dvm/ Without the flag it names the rule it would add and leaves the file to you. The repository is yours, so the edit is yours to ask for — by flag rather than by prompt, which is what keeps every dvm command runnable from a script and from CI. If .dvm is already ignored under any of the usual spellings, dvm says so and leaves the file as it is."
+        },
+        {
+          "h": "It installs first",
+          "a": "it-installs-first",
+          "b": "Name a version you do not have and dvm use installs it, then pins it. So the two-command form dvm install 3.13.2 && dvm use 3.13.2 is worth typing when you want the download to happen at a different time from the pin."
+        },
+        {
+          "h": "Pinning a name",
+          "a": "pinning-a-name",
+          "b": "The argument is a pin, so an alias or a channel works: dvm use work an alias you defined dvm use stable the version stable resolved to when you last installed it dvm reports the hop it followed: Pinned Dart 3.13.2 for /Users/you/code/api (work -> 3.13.2). dvm use stable records the version stable currently means on this machine, so the .dvmrc you commit names a concrete SDK. A hand-written .dvmrc saying stable resolves against each machine's own record instead, so pin a version there for a repository other people build — see Aliases and Channels."
+        },
+        {
+          "h": "In a monorepo",
+          "a": "in-a-monorepo",
+          "b": "Because the write follows the read, running dvm use inside a package updates the pin that was already governing it — usually the one at the repository root. That is the pin dart obeys in that package, so changing it is what actually moves the package onto the new SDK. When a package wants an SDK of its own, ask for it with --here: cd ~/code/api/packages/app dvm use 3.13.2 --here Pinned Dart 3.13.2 for /Users/you/code/api/packages/app. /Users/you/code/api/packages/app/.dvmrc -> commit this /Users/you/code/api/packages/app/.dvm/dart_sdk -> /Users/you/.dvm/versions/3.13.2 (for your IDE; do not commit it) This pin shadows /Users/you/code/api/.dvmrc, which no longer applies in /Users/you/code/api/packages/app or below it. .dvm/ is not ignored yet by /Users/you/code/api/packages/app/.gitignore. Add it with: dvm use 3.13.2 --here --gitignore That third line is the point of the flag. A nested pin takes over from the one above it for that directory and everything under it — nearest wins — and dvm names the pin it displaced at the moment you create it, so the new shape of the repository is on screen while you are still looking at it."
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "The .dvmrc File — the format, and where dvm looks for it. dvm global — the fallback for directories that pin nothing. dvm which — confirm what applies here now."
+        }
+      ]
+    },
+    {
+      "u": "/commands/list",
+      "t": "dvm list",
+      "d": "List installed SDKs, marking the global and the project.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm list dvm ls Shows everything in ~/.dvm/versions, newest first, annotated with everything that points at it. dvm list Installed Dart SDKs in /Users/you/.dvm/versions: 3.13.2 this project, global default, channel: stable, alias: work 3.9.0 3.4.0 alias: legacy = what /Users/you/code/api resolves to right now: pinned by /Users/you/code/api/.dvmrc. ls is an alias for the same command."
+        },
+        {
+          "h": "Reading the output",
+          "a": "reading-the-output",
+          "b": "The marks the version this directory resolves to. The line under the list says which rule produced that answer, in the same words dvm which uses — one resolution, one vocabulary, whichever command you asked. Each row carries every name that resolves to it: Tag Meaning this project What the current directory resolves to. global default The global in ~/.dvm/config.json. channel: stable The version recorded for that channel at install time. alias: work An alias that resolves here. BROKEN: no bin/dart The directory exists but has no dart executable in it."
+        },
+        {
+          "h": "Entries marked BROKEN",
+          "a": "entries-marked-broken",
+          "b": "A directory in versions/ with no dart executable in it is listed and marked, because several hundred megabytes of half-removed SDK is exactly what you came here to find out about. The fix is dvm remove --force followed by a fresh dvm install. Names that are not semver sort after the ones that are, by name — that covers the Dart 1 build numbers the archive still carries, and anything you dropped into versions/ by hand."
+        },
+        {
+          "h": "When the SDK is outside this list",
+          "a": "when-the-sdk-is-outside-this-list",
+          "b": "When this directory falls through to a dart from your PATH, or no rule applies at all, the summary line says which and leaves every row unmarked: none of these: /Users/you/scratch falls through to /opt/homebrew/bin/dart on PATH (rule 4 of 5)."
+        },
+        {
+          "h": "A global default that needs installing",
+          "a": "a-global-default-that-needs-installing",
+          "b": "dvm writes a warning to stderr when global names a version you do not have: The global default names 3.9.0, which is not installed. Run: dvm install 3.9.0 This is the state dvm remove --force can leave behind, and it is worth fixing straight away: the global default applies to every command run outside a pinned project."
+        },
+        {
+          "h": "Before you install anything",
+          "a": "before-you-install-anything",
+          "b": "No Dart SDKs are installed in /Users/you/.dvm/versions. Install one with: dvm install stable"
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "dvm list-remote — what is available to install. dvm which — the full explanation for this directory."
+        }
+      ]
+    },
+    {
+      "u": "/commands/list-remote",
+      "t": "dvm list-remote",
+      "d": "List the releases available from the archive.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm list-remote [--channel <stable beta dev>] [--all] Asks Google's dart-archive bucket what has been published, and marks the ones you already have. dvm list-remote 3.13.2 (installed) 3.13.1 3.13.0 ... Showing the newest 25 of 177 stable releases. Pass --all to see them all. This is one of the two commands that reach the network. The other is dvm install when you name a channel; resolution answers from local files."
+        },
+        {
+          "h": "Flags",
+          "a": "flags",
+          "b": "Flag Default Effect -c, --channel stable Which release channel to list. One of stable, beta, dev. --all off Show every release instead of the newest 25. dvm list-remote --channel beta dvm list-remote --all"
+        },
+        {
+          "h": "Why it truncates by default",
+          "a": "why-it-truncates-by-default",
+          "b": "Stable alone carries around 177 semver releases. A full dump buries the handful anybody is actually about to install, so the newest 25 are shown and the rest are one flag away. The archive also holds about 28 legacy Dart 1 build numbers (29803, 41096, …) and a latest marker. dvm lists the semver releases you can pin, and leaves those aside."
+        },
+        {
+          "h": "A version can be in more than one channel",
+          "a": "a-version-can-be-in-more-than-one-channel",
+          "b": "The same version is often published to stable and to beta. That is why dvm install probes the channels in order stable, beta, dev when you name a bare version, and why a channel is resolved to a version before anything is downloaded."
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "dvm install — install one of these. dvm list — what is already on this machine."
+        }
+      ]
+    },
+    {
+      "u": "/commands/remove",
+      "t": "dvm remove",
+      "d": "Delete an installed SDK.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm remove [--force] Deletes ~/.dvm/versions/ from disk. dvm remove 3.9.0 Removed Dart 3.9.0 (/Users/you/.dvm/versions/3.9.0)."
+        },
+        {
+          "h": "Flags",
+          "a": "flags",
+          "b": "Flag Effect -f, --force Remove it even if something still points at it."
+        },
+        {
+          "h": "What still points at it",
+          "a": "what-still-points-at-it",
+          "b": "dvm remove 3.13.2 Refusing to remove Dart 3.13.2: 2 things still point at it. the global default the alias \"work\" Repoint them first, or remove it anyway with: dvm remove 3.13.2 --force Repointing first is almost always what you want: a global default applies to every command run outside a pinned project, so it is worth landing on a version you have. With --force, dvm removes it and then names on stderr exactly what it changed, so you leave the command knowing what to repoint."
+        },
+        {
+          "h": "What it cleans up on the way",
+          "a": "what-it-cleans-up-on-the-way",
+          "b": "Removing a version drops any channel record pointing at it, so channels.stable keeps naming something you have. An alias stays as you wrote it and dvm reports it instead — the name was your choice, so repointing it is yours too. If the current project's .dvmrc pins the version you just removed, dvm warns about that too."
+        },
+        {
+          "h": "The version may be a name",
+          "a": "the-version-may-be-a-name",
+          "b": "The argument is a pin, so an alias or a channel name resolves first: dvm remove work removes whatever \"work\" currently means"
+        },
+        {
+          "h": "Already removed",
+          "a": "already-removed",
+          "b": "Dart 3.9.0 is not installed, so there is nothing to remove. See what is: dvm list Exit code 1, so a script can tell \"there was nothing there\" from \"it was removed\"."
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "dvm list — what is installed, and what points at it. dvm unalias — remove a name without removing an SDK."
+        }
+      ]
+    },
+    {
+      "u": "/commands/alias",
+      "t": "dvm alias",
+      "d": "Give a version a name, or list the names you have.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm alias dvm alias list An alias is a name you define for a version, stored in ~/.dvm/config.json. Anywhere dvm accepts a version, it accepts an alias. dvm alias work 3.13.2 \"work\" now means 3.13.2. Then: dvm use work dvm global work dvm install work"
+        },
+        {
+          "h": "Repointing",
+          "a": "repointing",
+          "b": "Changing an alias moves every project pinned to it, in one command: dvm alias work 3.14.0 \"work\" now means 3.14.0. was: 3.13.2 Dart 3.14.0 is not installed. Run: dvm install 3.14.0 An alias may point at an SDK you have not installed — writing the alias before the download is a reasonable thing to do — and dvm tells you right then, with the command that fills the gap."
+        },
+        {
+          "h": "Listing",
+          "a": "listing",
+          "b": "dvm alias list Aliases in /Users/you/.dvm/config.json: legacy -> 3.4.0 (installed) work -> stable -> 3.13.2 (installed) Channels, as recorded by dvm install: stable -> 3.13.2 The chain is shown when there is one. Channels are listed alongside because they are the other way a name maps to a version, and the two are easy to confuse — see Aliases and Channels. Plain dvm alias with no arguments does the same thing as dvm alias list."
+        },
+        {
+          "h": "Names dvm reserves",
+          "a": "names-dvm-reserves",
+          "b": "Reserved What it already means stable, beta, dev Channel names. Resolution checks channels before aliases, so such an alias would be silently unreachable. Anything that looks like a version dvm could not tell the alias from the version. list dvm alias list has to keep meaning \"show me the aliases\". A leading - It reads as an option. Whitespace or / or \\ A name is a single word. dvm says so at the moment you try, which is what keeps every name in your config a name that resolves."
+        },
+        {
+          "h": "Chains and loops",
+          "a": "chains-and-loops",
+          "b": "An alias may point at another alias or at a channel, and dvm follows the chain up to eight hops. A loop — including an alias pointing at itself — is reported at the command that would create it, rather than at the cd that would have met it later."
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "dvm unalias — remove a name. Aliases and Channels — how names resolve, and what stable means offline."
+        }
+      ]
+    },
+    {
+      "u": "/commands/unalias",
+      "t": "dvm unalias",
+      "d": "Remove a named version.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm unalias Deletes an alias from ~/.dvm/config.json. dvm unalias work Removed the alias \"work\" (it meant 3.13.2). The SDK itself is untouched. This removes the name. The SDK stays in ~/.dvm/versions; dvm remove is the command for that."
+        },
+        {
+          "h": "Dangling references",
+          "a": "dangling-references",
+          "b": "After removing a name, dvm checks whether anything is still spelled with it, and reports each one on stderr: The global default still says \"work\", which no longer means anything. Run: dvm global The alias \"current\" still points at \"work\". Run: dvm alias current /Users/you/code/api/.dvmrc still pins \"work\". Run: dvm use The global default is the one to act on first. Once work is no longer an alias, resolution reads it as a concrete version, so repointing the global at a version you have keeps every command outside a pinned project working."
+        },
+        {
+          "h": "An unrecognised name",
+          "a": "an-unrecognised-name",
+          "b": "There is no alias \"work\". Defined: legacy, next Exit code 1."
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "dvm alias — create and list aliases. dvm remove — delete the SDK, not the name."
+        }
+      ]
+    },
+    {
+      "u": "/commands/global",
+      "t": "dvm global",
+      "d": "Set the version used when no .dvmrc applies.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm global dvm global Sets global in ~/.dvm/config.json. This is rule 3: what applies in a directory that has no .dvmrc above it. dvm global 3.13.2 With no argument it reports the current value: dvm global The global default is 3.13.2. /Users/you/.dvm/config.json"
+        },
+        {
+          "h": "The fallback for directories that pin nothing",
+          "a": "the-fallback-for-directories-that-pin-nothing",
+          "b": "This is the difference between dvm and a version manager you have to remember to switch. The global default gives scratch directories, one-off scripts and your home directory a Dart, while a project with a .dvmrc uses its own. Leave it unset and directories with no pin fall through to rule 4: whatever dart was already on your PATH. That is a perfectly reasonable way to run dvm. No global default is set. Directories with no .dvmrc fall through to the first dart on PATH. Set one with: dvm global"
+        },
+        {
+          "h": "It installs first",
+          "a": "it-installs-first",
+          "b": "Naming a version you do not have installs it, exactly as dvm use does."
+        },
+        {
+          "h": "A global default that needs installing",
+          "a": "a-global-default-that-needs-installing",
+          "b": "The global default is 3.9.0. It is not installed. Run: dvm install 3.9.0 Exit code 1. This is the state dvm remove --force can leave behind, and it is worth fixing straight away: the global default applies to every command run outside a pinned project."
+        },
+        {
+          "h": "The same thing, two spellings",
+          "a": "the-same-thing-two-spellings",
+          "b": "dvm global 3.13.2 dvm use 3.13.2 --global are identical. dvm use --global is there so use covers the concept too, whichever command you reached for first."
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "Resolution Order — where rule 3 sits. dvm which — confirm whether the global is what is actually applying."
+        }
+      ]
+    },
+    {
+      "u": "/commands/which",
+      "t": "dvm which",
+      "d": "Print the resolved SDK and which rule chose it.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm which [--path] dvm current The debugging command. It prints the dart that applies in this directory and the rule that produced it. dvm which /Users/you/.dvm/versions/3.13.2/bin/dart Dart 3.13.2 Chosen by rule 2 of 5: pinned by /Users/you/code/api/.dvmrc. SDK: /Users/you/.dvm/versions/3.13.2 current is an alias for the same command."
+        },
+        {
+          "h": "Flags",
+          "a": "flags",
+          "b": "Flag Effect --path Print only the path to the dart executable, for scripting. \"$(dvm which --path)\" --version"
+        },
+        {
+          "h": "Why it names the rule",
+          "a": "why-it-names-the-rule",
+          "b": "Debuggability is the point of the whole design. \"Which Dart am I running?\" is easy; \"why that one?\" is the question that costs an afternoon. Every one of the five rules gets its own sentence: Chosen by rule 1 of 5: DVM_DART_VERSION is set in the environment, which overrides everything on disk. Chosen by rule 2 of 5: pinned by /Users/you/code/api/.dvmrc. Chosen by rule 3 of 5: no .dvmrc applies here, so the global default in /Users/you/.dvm/config.json was used. Chosen by rule 4 of 5: nothing pins a version here and no global default is set, so this is the next dart on PATH, found in /opt/homebrew/bin."
+        },
+        {
+          "h": "Indirect pins",
+          "a": "indirect-pins",
+          "b": "When the pin was a name rather than a version, the hop is spelled out: It says \"work\", an alias for 3.13.2 in /Users/you/.dvm/config.json. It says \"stable\", the channel that was recorded as 3.13.2 when it was last installed."
+        },
+        {
+          "h": "An SDK from your PATH",
+          "a": "an-sdk-from-your-path",
+          "b": "Under rule 4 the SDK is whatever was already on your PATH: /opt/homebrew/bin/dart Chosen by rule 4 of 5: nothing pins a version here and no global default is set, so this is the next dart on PATH, found in /opt/homebrew/bin. SDK: /opt/homebrew/opt/dart This SDK is not managed by dvm. Pin one for this directory with: dvm use dvm reports the path and leaves the version to the SDK itself, since this is one it did not install."
+        },
+        {
+          "h": "Reaching rule 5",
+          "a": "reaching-rule-5",
+          "b": "When no rule matches, dvm which gives the same rule 5 message every other command gives — a list of what was checked and what to run."
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "Resolution Order — the rules this command reports on. dvm doctor — for when the problem is PATH rather than the pin."
+        }
+      ]
+    },
+    {
+      "u": "/commands/dart",
+      "t": "dvm dart",
+      "d": "Run dart from the resolved SDK.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm dart <args...> Runs the resolved SDK's dart with the arguments you gave, forwards its exit code, and forwards SIGINT/SIGTERM to it. dvm dart --version dvm dart run bin/main.dart dvm dart test This is what the shim calls. Once ~/.dvm/shims is on your PATH, plain dart does the same thing, so this form is mostly for being explicit — or for a machine where the shim has yet to be installed."
+        },
+        {
+          "h": "Arguments are passed through verbatim",
+          "a": "arguments-are-passed-through-verbatim",
+          "b": "Everything after dvm dart belongs to the child process, including flags that would otherwise look like dvm's own. That is why dvm dart --version reports the SDK's version rather than dvm's. The one exception is a leading --. Writing dvm dart -- --version uses the terminator to say \"stop reading these\", so dvm drops the terminator and passes the rest along."
+        },
+        {
+          "h": "What the child process sees",
+          "a": "what-the-child-process-sees",
+          "b": "stdio is inherited. The child talks to the real terminal, so anything that asks \"am I a tty?\" — a prompt from dart run, progress output, colour — gets the right answer, and dvm stays out of the byte path. PATH has the resolved SDK's bin first, so a dart that the child itself spawns is the same one. DVM_DART_VERSION is set to the resolved version, so nested dvm invocations agree with this one. Under rule 4 it is left unset, so a nested dvm runs the five rules for itself and reaches the same SDK. The exit code becomes dvm's. A failing dart test fails through dvm exactly as it would without it, which is what CI depends on."
+        },
+        {
+          "h": "Signals",
+          "a": "signals",
+          "b": "SIGINT and SIGTERM are forwarded to the child. Ctrl-C at a terminal already reaches the whole foreground process group; forwarding extends the same behaviour to a kill aimed at dvm by a supervisor or a script, so the real work stops along with the wrapper."
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "dvm exec — the same thing for any command, not just dart. The Shim and Your PATH — how plain dart gets here."
+        }
+      ]
+    },
+    {
+      "u": "/commands/exec",
+      "t": "dvm exec",
+      "d": "Run any command with the resolved SDK first on PATH.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm exec [args...] Resolves the SDK for the current directory, puts its bin first on the child's PATH, and runs the command you named. dvm exec melos bootstrap dvm exec ./tool/build.sh dvm exec dart_frog dev This is the general form of dvm dart. The payoff is every dart that the command you name goes on to spawn."
+        },
+        {
+          "h": "Why this matters",
+          "a": "why-this-matters",
+          "b": "melos bootstrap runs dart pub get in every package. A build script shells out to dart compile. A code generator spawns dart run build_runner. Each of those inherits the environment of its parent, so putting the pinned SDK first on that environment's PATH is what makes the pin apply all the way down."
+        },
+        {
+          "h": "The lookup is done on the child's PATH",
+          "a": "the-lookup-is-done-on-the-childs-path",
+          "b": "dvm resolves the command name itself rather than handing a bare name to the operating system, because the whole point is to search the PATH the child is about to get, not the one dvm has. The shell's rule applies: a name containing a separator (./tool/build.sh, /usr/bin/env) is treated as a path and used as given. On Windows a bare name is resolved through the usual .exe/.bat/.cmd extensions."
+        },
+        {
+          "h": "Exit code 127",
+          "a": "exit-code-127",
+          "b": "dvm exec: command not found: melos 127 is what a shell returns for the same condition. dvm exec is a launcher, so it answers the way the thing it stands in for answers, and a script testing for 127 gets 127."
+        },
+        {
+          "h": "Environment",
+          "a": "environment",
+          "b": "Identical to dvm dart, because both build it the same way: stdio inherited, exit code forwarded, SIGINT/SIGTERM forwarded, the resolved SDK's bin prepended to PATH, DVM_DART_VERSION set to the resolved version, except under rule 4. Nested dvm exec calls keep PATH the same size: when the first entry is already the SDK's bin, it stays as it is."
+        },
+        {
+          "h": "Arguments",
+          "a": "arguments",
+          "b": "Everything after exec belongs to the child, including flags. A leading -- is dropped, so dvm exec -- melos --version works."
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "dvm dart — the dart-specific shorthand. Using dvm in CI — where dvm exec replaces a shim entirely."
+        }
+      ]
+    },
+    {
+      "u": "/commands/setup",
+      "t": "dvm setup",
+      "d": "Install the shims and print the PATH line to add.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm setup [--dvm-path ] [--write-path-line --remove-path-line] Writes ~/.dvm/shims/dart (dart.bat on Windows) and tells you the one line that puts the shims on your PATH — or adds it for you, with --write-path-line. dvm setup Wrote /Users/you/.dvm/shims/dart -> /Users/you/.dvm/bin/dvm exec dart Add this to ~/.zshrc: export PATH=\"/Users/you/.dvm/shims:$PATH\" Then check it with: dvm doctor"
+        },
+        {
+          "h": "Flags",
+          "a": "flags",
+          "b": "Flag Effect --dvm-path The dvm binary to bake into the shim. Defaults to the running one; needed when running from source. --write-path-line Add the PATH line to your shell startup file instead of just printing it. Backs the file up first, and leaves it alone when the line is already there. --remove-path-line Take that line back out, leaving the shims in place. A line you added by hand stays yours."
+        },
+        {
+          "h": "It prints the PATH line for you",
+          "a": "it-prints-the-path-line-for-you",
+          "b": "It prints the exact line and names the file it belongs in, so the change to your login shell stays yours to make. See The Shim and Your PATH for which file each shell reads. And when you would rather dvm made the edit, --write-path-line does it: dvm setup --write-path-line Wrote /Users/you/.dvm/shims/dart -> /Users/you/.dvm/bin/dvm exec dart Backed up /Users/you/.zshrc -> /Users/you/.zshrc.dvm-backup-20260829-154646 Added this line to /Users/you/.zshrc: export PATH=\"/Users/you/.dvm/shims:$PATH\" It takes effect in shells started after this. For the one you are in: source /Users/you/.zshrc Undo it with: dvm setup --remove-path-line Then check it with: dvm doctor It copies the file to a timestamped backup first and writes the line between >>> dvm >>> and <<< dvm <<<, so a second run finds it and adds nothing — and so --remove-path-line knows which line is dvm's: dvm setup --remove-path-line Backed up /Users/you/.zshrc -> /Users/you/.zshrc.dvm-backup-20260829-154647 Removed dvm's PATH line from /Users/you/.zshrc. Shells started after this will no longer find the shims. The shims themselves are still in /Users/you/.dvm/shims. A line you typed yourself is recognised too — different quoti"
+        },
+        {
+          "h": "On Windows",
+          "a": "on-windows",
+          "b": "PowerShell takes PATH from your user environment rather than from a startup file, so dvm setup hands you the call that sets it: Wrote C:\\Users\\you\\.dvm\\shims\\dart.bat -> C:\\Users\\you\\.dvm\\bin\\dvm.exe exec dart Run this once in PowerShell: [Environment]::SetEnvironmentVariable('Path', 'C:\\Users\\you\\.dvm\\shims;' + [Environment]::GetEnvironmentVariable('Path', 'User'), 'User') That edits your user PATH, so it survives a reboot. It has to go ahead of anything else that puts a dart on PATH, and it only takes effect in terminals opened after you run it. For the terminal you are in right now: $env:Path = 'C:\\Users\\you\\.dvm\\shims;' + $env:Path Then check it with: dvm doctor That writes to the User scope, so it needs no elevation. Git Bash and MSYS set $SHELL, so dvm gives them the POSIX export line and the startup file that shell reads."
+        },
+        {
+          "h": "It needs a dvm binary to point at",
+          "a": "it-needs-a-dvm-binary-to-point-at",
+          "b": "The shim contains an absolute path to a dvm binary, so dvm setup has to know where one is. Under dart run bin/dvm.dart the running executable is the Dart VM, and a shim baked with that path would read exec /path/to/dart exec dart \"$@\" and hand exec dart to the SDK as arguments on every dart invocation on the machine. So dvm names the binary it wants instead of guessing: dvm: dvm is running from source (via /Users/you/.dvm/versions/3.13.2/bin/dart), so it cannot tell where a dvm binary lives, and a shim pointing at the Dart VM would break every dart on this machine. Compile it first: dart compile exe bin/dvm.dart -o /usr/local/bin/dvm Or name the binary: dvm setup --dvm-path --dvm-path names the binary directly, which is the answer whenever dvm is running from source."
+        },
+        {
+          "h": "Exit code",
+          "a": "exit-code",
+          "b": "dvm setup exits 1 when it finds something that would leave the shim inert — most importantly a shell function shadowing dvm, which the older cbracken/dvm installs. The exit code tells you at the command that wrote the shim, rather than the next time you run dart. --write-path-line exits 1 for the same reason when it holds off: a function or alias named dvm beats PATH outright, so the line would look like it worked and change nothing. It says so, leaves the file untouched, and asks you to clear the warning and run it again. --remove-path-line exits 0 whether it removed dvm's block, found a line you wrote yourself, or found nothing to remove."
+        },
+        {
+          "h": "Re-running it",
+          "a": "re-running-it",
+          "b": "Safe, and the right thing to do after moving or reinstalling the dvm binary — the shim contains an absolute path to it. --write-path-line is safe to repeat too: the second run finds the line already there and says so."
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "The Shim and Your PATH — what the shim is, and why PATH order matters. dvm doctor — check that it worked."
+        }
+      ]
+    },
+    {
+      "u": "/commands/migrate",
+      "t": "dvm migrate",
+      "d": "Import SDKs from the older cbracken/dvm layout.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm migrate [--dry-run] [--clean] Moves the SDKs an older cbracken/dvm install already downloaded into the layout this dvm uses. See Migrating from cbracken/dvm for the full walkthrough; this page is the command's reference."
+        },
+        {
+          "h": "Flags",
+          "a": "flags",
+          "b": "Flag Effect --dry-run Print everything that would move and everything a later --clean would delete. Reports only. --clean Remove the older tool's own files, once its SDKs have been migrated. Always a step of its own. -y, --yes Answer yes to the questions this command would ask."
+        },
+        {
+          "h": "What it does",
+          "a": "what-it-does",
+          "b": "Both tools live in ~/.dvm. The older one keeps its SDKs in ~/.dvm/darts/ , extracted, in exactly the shape this dvm keeps them in ~/.dvm/versions/ . So migration is a move: several hundred megabytes of SDK you already have get relocated on disk rather than downloaded again. dvm migrate Found an older dvm (cbracken/dvm) in /Users/you/.dvm: darts/ scripts/ environments/ Moving 3 SDKs from darts/ to versions/... 3.4.0 moved 2.19.6 moved 3.0.5 skipped: versions/3.0.5 already exists 2 SDKs moved. The older tool's own files are still here. Remove them with: dvm migrate --clean"
+        },
+        {
+          "h": "How your SDKs stay safe",
+          "a": "how-your-sdks-stay-safe",
+          "b": "Those directories may be your only copy of those SDKs, so the command is built around keeping them: the move happens before anything is deleted, a version already present in versions/ is skipped, so what you have stays what you have, a move is reported as done once the destination is verified, deleting the older tool's own files is a separate --clean run that has to be asked for and then confirmed. Run --dry-run first if you want to see the whole plan before anything moves."
+        },
+        {
+          "h": "--clean",
+          "a": "--clean",
+          "b": "dvm migrate --clean Removes the older tool's scripts/, environments/ and its git checkout. It asks for confirmation; --yes answers for you, for scripted use. It is a separate step on purpose, so a migration that succeeded stays succeeded while the deletion waits for you."
+        },
+        {
+          "h": "On a machine with only this dvm",
+          "a": "on-a-machine-with-only-this-dvm",
+          "b": "Nothing to migrate: no older dvm (cbracken/dvm) install in /Users/you/.dvm. That directory would have a scripts/dvm and a darts/ in it. Exit code 0: there was nothing to do, and that is a success."
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "Migrating from cbracken/dvm — including the shell function you have to remove by hand."
+        }
+      ]
+    },
+    {
+      "u": "/commands/doctor",
+      "t": "dvm doctor",
+      "d": "Check PATH order, shim health, symlinks and config.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm doctor Runs every check dvm knows how to run, and names the file each finding is about along with what to do next. dvm doctor dvm doctor ok PATH: /Users/you/.dvm/shims is on PATH ahead of every other dart. ok shims: /Users/you/.dvm/shims/dart runs /Users/you/.dvm/bin/dvm. ok shell: no shell function or alias named dvm in your startup files. ok config: /Users/you/.dvm/config.json is valid; the global default Dart 3.9.0 is installed. ok project: /Users/you/code/api/.dvmrc pins Dart 3.13.2, which is installed. ok project: /Users/you/code/api/.dvm/dart_sdk points at /Users/you/.dvm/versions/3.13.2. Everything checks out."
+        },
+        {
+          "h": "Severities and the exit code",
+          "a": "severities-and-the-exit-code",
+          "b": "Marker Meaning Affects exit code ok Checked, nothing wrong. no warn Worth knowing, not broken. no FAIL Something is actually wrong. yes Only FAIL changes the exit code, which is what makes dvm doctor exit 1 usable as a CI gate: it fails the build on what is actually broken, and passes a machine that merely still has the old tool's directories lying around."
+        },
+        {
+          "h": "What it checks",
+          "a": "what-it-checks",
+          "b": "PATH — whether ~/.dvm/shims sits ahead of every other dart on PATH. Position is the question, because a dart in an earlier entry is found first and the shim never runs, which looks exactly like dvm doing nothing at all. shims — that the shim exists, is executable, and points at a dvm binary that is still there. This is the check that catches a shim left behind by moving or reinstalling dvm; running dvm setup again puts it right. shell — whether a shell function or alias named dvm is being sourced from your startup files. This is the most valuable check in the command. On a machine that has ever carried cbracken/dvm, dvm is a shell function, and a shell function is resolved before PATH is searched at all — so the binary you installed is never reached, and nothing on screen says why. doctor reports the file and the line. config — that ~/.dvm/config.json parses, and that the global default and aliases in it name versions that exist. project — the .dvmrc that applies here, found by the same walk up the tree that dvm use writes by, whether the version it pins is installed, and whether the .dvm/dart_sdk link beside that pin still reaches that SDK."
+        },
+        {
+          "h": "Reading a finding",
+          "a": "reading-a-finding",
+          "b": "Every non-ok finding carries supporting detail and a remedy: FAIL PATH: /Users/you/.dvm/shims is on PATH but an entry ahead of it provides a dart, so the shim is never reached. PATH order (entries that provide a dart): 5. /Users/you/.dvm/shims <- dvm shims 2. /opt/homebrew/bin -> Put the shims first: export PATH=\"/Users/you/.dvm/shims:$PATH\" The remedy is written for the shell you are in. On Windows, where PATH is an environment setting rather than a line in a startup file, doctor hands you the PowerShell call that sets it: FAIL PATH: C:\\Users\\you\\.dvm\\shims is not on PATH, so dart does not go through dvm. PATH order (entries that provide a dart): 3. C:\\hostedtoolcache\\windows\\dart\\3.13.2\\x64\\bin -> Run this once in PowerShell: [Environment]::SetEnvironmentVariable('Path', 'C:\\Users\\you\\.dvm\\shims;' + [Environment]::GetEnvironmentVariable('Path', 'User'), 'User')"
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "Troubleshooting — the failures this command exists to catch. dvm which — for when PATH is fine and the pin is the surprise."
+        }
+      ]
+    },
+    {
+      "u": "/commands/update",
+      "t": "dvm update",
+      "d": "Update dvm itself to the newest release.",
+      "g": "Command Reference",
+      "s": [
+        {
+          "b": "dvm update [version] dvm update --check Updates dvm itself, leaving your SDKs, your pins and your config exactly as they are. dvm update Updated dvm 0.1.0 -> 0.2.0 (/Users/you/.dvm/bin/dvm)."
+        },
+        {
+          "h": "Flags",
+          "a": "flags",
+          "b": "Flag Effect --check Report whether a newer dvm exists, without installing anything. dvm update --check A newer dvm is available: 0.1.0 -> 0.2.0 Run dvm update to install it. Already current: dvm 0.2.0 is already up to date."
+        },
+        {
+          "h": "Installing a specific version",
+          "a": "installing-a-specific-version",
+          "b": "dvm update 0.1.5 Downgrading works the same way. The argument is a dvm version — Dart versions belong to dvm install."
+        },
+        {
+          "h": "How it replaces itself",
+          "a": "how-it-replaces-itself",
+          "b": "It downloads the release asset for your platform, verifies its checksum, writes it to a temporary file, and renames that over the running binary. On POSIX this is safe: rename over a running executable keeps the old inode alive, so the process you are in keeps running from the file that is no longer at that path. On Windows the current binary is renamed aside first and the new one written in its place, which is how a running .exe gets replaced there."
+        },
+        {
+          "h": "The notice on other commands",
+          "a": "the-notice-on-other-commands",
+          "b": "Ordinary dvm commands run a background check and print a one-line notice on stderr when a newer release exists. Stderr is the point: dvm which --path and dvm list get read by scripts, and keeping stdout to exactly what was asked for is what lets a script rely on it. Turn it off per invocation: dvm --no-version-check list A compiled binary runs the check; dvm running from source goes straight to the work, and so does dvm update itself, which says all this at more length anyway."
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "Updating dvm — where the releases come from and how \"latest\" is decided. Installation — the install script, which does the same job for a machine reaching dvm for the first time."
+        }
+      ]
+    },
+    {
+      "u": "/guides/updating-dvm",
+      "t": "Updating dvm",
+      "d": "How a new dvm reaches your machine, and how to turn the notice off.",
+      "g": "Guides",
+      "s": [
+        {
+          "b": "dvm updates itself. There are two paths to a newer version and they do the same work."
+        },
+        {
+          "h": "The two ways",
+          "a": "the-two-ways",
+          "b": "dvm update from inside the CLI, or curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh sh which is the same script that installed it in the first place. Both find the newest release, download the asset for your platform, verify its checksum, and put the binary in place atomically. Use whichever you have in front of you."
+        },
+        {
+          "h": "What ships",
+          "a": "what-ships",
+          "b": "The artifact is an AOT-compiled binary — dart compile exe — attached to a GitHub Release. A compiled binary runs on a machine with nothing installed, which is exactly the machine a Dart version manager arrives on: the language it manages is the thing that is missing. That property is what the whole distribution story is built on. Assets are named: dvm-linux-x64.zip dvm-linux-arm64.zip dvm-macos-x64.zip dvm-macos-arm64.zip dvm-windows-x64.zip Each contains a bare dvm (dvm.exe on Windows), and each has a .sha256 published beside it. Those five names are a contract. install.sh and dvm update both construct them, which is what lets an installed copy find its own next version. The same spelling appears in the install script, the release packaging script, and the updater."
+        },
+        {
+          "h": "How \"latest\" is decided",
+          "a": "how-latest-is-decided",
+          "b": "dvm scans /releases for the newest non-draft, non-prerelease entry that carries the asset it needs. Choosing on the asset rather than on a release's position means \"latest\" always names a release with a CLI binary in it, even in a repository that also publishes per-package releases."
+        },
+        {
+          "h": "Replacing a running binary",
+          "a": "replacing-a-running-binary",
+          "b": "On POSIX, rename over a running executable keeps the old inode alive — the process you are in keeps running from the file that is no longer at that path — so writing a temp file and renaming it into place is safe: that path holds the old binary or the new one, and an interrupted copy leaves the old one there. On Windows the current binary is renamed aside first and the new one written in its place, which is how a running .exe gets replaced there."
+        },
+        {
+          "h": "The update notice",
+          "a": "the-update-notice",
+          "b": "Ordinary commands start a check for a newer release before doing their work and report it afterwards, as one line: A newer dvm is available: 0.1.0 -> 0.2.0. Run: dvm update Three things about it: It goes to stderr, so dvm which --path and dvm list keep handing a script exactly what it asked for on stdout. A compiled binary checks; dvm running from source goes straight to the work. dvm update says all of this itself, at more length, so it skips the one-liner. Suppress it for one invocation: dvm --no-version-check list Anything scripted against dvm wants its output to be exactly what it asked for, which is what that flag is for. In CI it is worth setting — see Using dvm in CI."
+        },
+        {
+          "h": "Pinning the installer",
+          "a": "pinning-the-installer",
+          "b": "curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh DVM_VERSION=0.2.0 sh Useful in a Dockerfile, where pinning the installer is what keeps the image reproducible."
+        },
+        {
+          "h": "See also",
+          "a": "see-also",
+          "b": "dvm update — the command reference. Installation — the install script and its environment variables."
+        }
+      ]
+    },
+    {
+      "u": "/guides/migrating",
+      "t": "Migrating from cbracken/dvm",
+      "d": "Move an existing ~/.dvm across without re-downloading anything.",
+      "g": "Guides",
+      "s": [
+        {
+          "b": "cbracken/dvm is the older Dart version manager, and it also lives in ~/.dvm. This dvm deliberately takes that directory over, and dvm migrate is how the handover happens."
+        },
+        {
+          "h": "What is already there",
+          "a": "what-is-already-there",
+          "b": "An older install looks like this: ~/.dvm/ darts/ / the SDKs, extracted scripts/dvm the shell function that gets sourced environments/ the older tool's per-environment symlinks .git/ its own checkout The important part: darts/ holds extracted SDKs in exactly the layout this dvm expects in versions/ . So migration is a move, not a download."
+        },
+        {
+          "h": "Step 1 — install this dvm",
+          "a": "step-1--install-this-dvm",
+          "b": "curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh sh The install script writes ~/.dvm/bin/dvm, a path the older tool leaves alone, so at this point both installs sit side by side."
+        },
+        {
+          "h": "Step 2 — remove the shell function",
+          "a": "step-2--remove-the-shell-function",
+          "b": "Do this first — it is what lets the rest of this page work. The older dvm is installed as a shell function, sourced from your .zshrc or .bashrc: [[ -s \"$HOME/.dvm/scripts/dvm\" ]] && . \"$HOME/.dvm/scripts/dvm\" A shell function is resolved before PATH is searched at all. So with that line in place, typing dvm runs the old tool no matter what you have installed — and because the two tools have overlapping command names, the errors look like your own mistakes rather than like the wrong program answering. Delete the line, then start a new shell. dvm doctor reports this by file and line if you are not sure whether you got it: dvm doctor"
+        },
+        {
+          "h": "Step 3 — see the plan",
+          "a": "step-3--see-the-plan",
+          "b": "dvm migrate --dry-run Found an older dvm (cbracken/dvm) in /Users/you/.dvm: darts/ scripts/ environments/ Would move 3 SDKs from darts/ to versions/: 3.4.0 2.19.6 3.0.5 (skipped: versions/3.0.5 already exists) A later dvm migrate --clean would delete: /Users/you/.dvm/scripts /Users/you/.dvm/environments /Users/you/.dvm/.git --dry-run reports and stops there, so the disk is exactly as you left it."
+        },
+        {
+          "h": "Step 4 — migrate",
+          "a": "step-4--migrate",
+          "b": "dvm migrate This moves the SDKs and stops there. Deleting is a separate --clean run. Those directories may be your only copy of those SDKs, so the command is written around that: the move happens before any deletion, a version already present in versions/ is skipped rather than overwritten, and a move is only reported as done once the destination is verified."
+        },
+        {
+          "h": "Step 5 — set up the shim",
+          "a": "step-5--set-up-the-shim",
+          "b": "The older tool worked by switching a global environment. This one resolves per directory, through a shim: dvm setup Add the PATH line it prints, start a new shell, and check: dvm doctor See The Shim and Your PATH."
+        },
+        {
+          "h": "Step 6 — clean up, when you are ready",
+          "a": "step-6--clean-up-when-you-are-ready",
+          "b": "dvm migrate --clean Removes the older tool's scripts/, environments/ and .git/. It asks first, and you can take your time: they cost a few megabytes, and doctor reports them as a warning."
+        },
+        {
+          "h": "What changes about your workflow",
+          "a": "what-changes-about-your-workflow",
+          "b": "Old way New way dvm install 2.19.6 dvm install 2.19.6 — same idea, central cache. dvm use 2.19.6 — switched a global environment dvm use 2.19.6 — writes a committed .dvmrc for this project. dvm list dvm list. Remembering which environment is active cd into a project and dart is that project's SDK. — dvm which tells you which of five rules chose the SDK you got. The headline difference is the per-project pin. The older tool has one global environment at a time; this one answers the question per directory, which is what lets two repositories on one machine disagree about their SDK and both be right."
+        }
+      ]
+    },
+    {
+      "u": "/guides/ci",
+      "t": "Using dvm in CI",
+      "d": "Pin the SDK a build uses, without a shim or a shell profile.",
+      "g": "Guides",
+      "s": [
+        {
+          "b": "CI is where dvm's design pays off most reliably: the version a build uses is the version in the repository, the same one developers have. The main thing to know is that dvm exec is all a build machine needs. The shim exists to make an interactive shell's dart follow the pin; in CI you write every command yourself, so naming dvm exec in front of them is simpler and takes no configuration."
+        },
+        {
+          "h": "The short version",
+          "a": "the-short-version",
+          "b": "name: Install dvm run: curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh sh name: Install the pinned SDK run: ~/.dvm/bin/dvm install \"$(cat .dvmrc tr -d '{}\" ' cut -d: -f2)\" name: Test run: ~/.dvm/bin/dvm exec dart test That parsing is ugly. Two better options follow."
+        },
+        {
+          "h": "Option 1 — dvm use reads the pin for you",
+          "a": "option-1--dvm-use-reads-the-pin-for-you",
+          "b": "Name the version in the workflow as well as in the repository, and let the two check each other: name: Install dvm run: curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh sh echo \"$HOME/.dvm/bin\" >> \"$GITHUB_PATH\" name: Install the pinned SDK run: dvm install 3.13.2 must match .dvmrc name: Test run: dvm exec dart test dvm exec resolves through rule 2 — the repository's own .dvmrc — so the build tests against the SDK .dvmrc names. If the workflow ever names a different one, the exec step says so at once."
+        },
+        {
+          "h": "Option 2 — DVM_DART_VERSION",
+          "a": "option-2--dvm_dart_version",
+          "b": "Rule 1 exists for exactly this. It overrides everything on disk, including the .dvmrc: env: DVM_DART_VERSION: 3.13.2 steps: run: curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh sh run: ~/.dvm/bin/dvm install \"$DVM_DART_VERSION\" run: ~/.dvm/bin/dvm exec dart test Use this when the build needs a different SDK from the one the repository pins — a matrix that tests against several versions is the obvious case: strategy: matrix: dart: ['3.9.0', '3.13.2'] env: DVM_DART_VERSION: ${{ matrix.dart }} Rule 1 is also the right lever for a one-off locally: DVM_DART_VERSION=3.9.0 dart test"
+        },
+        {
+          "h": "Turn the update notice off",
+          "a": "turn-the-update-notice-off",
+          "b": "env: DVM_DART_VERSION: 3.13.2 run: dvm --no-version-check exec dart test The notice is for a human at a terminal, and the check costs a network request per command, so a build runs faster and quieter without it."
+        },
+        {
+          "h": "Cache ~/.dvm/versions",
+          "a": "cache-dvmversions",
+          "b": "An SDK download is the slowest part of the job and the most cacheable: uses: actions/cache@v4 with: path: ~/.dvm/versions key: dvm-${{ runner.os }}-${{ hashFiles('.dvmrc') }} Key it on .dvmrc so bumping the pin invalidates the cache. Cache versions/ and leave ~/.dvm/cache to itself — that one holds in-flight download scratch, disposable by design, and a job starts cleaner without it."
+        },
+        {
+          "h": "In a Dockerfile",
+          "a": "in-a-dockerfile",
+          "b": "Pin the installer as well as the SDK, so the image builds the same way every time: ENV DVM_VERSION=0.2.0 RUN curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh sh ENV PATH=\"/root/.dvm/bin:${PATH}\" COPY .dvmrc . RUN dvm install 3.13.2 DVM_HOME moves the whole installation somewhere else if /root is wrong for your image."
+        },
+        {
+          "h": "Using the shim in CI",
+          "a": "using-the-shim-in-ci",
+          "b": "It works, and it is the right choice when the build runs scripts you did not write that call dart directly: run: curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh sh \"$HOME/.dvm/bin/dvm\" setup echo \"$HOME/.dvm/shims\" >> \"$GITHUB_PATH\" echo \"$HOME/.dvm/bin\" >> \"$GITHUB_PATH\" Note the order: shims go ahead of everything else on PATH that supplies a dart. GitHub's $GITHUB_PATH prepends, so the last line written ends up first — writing shims then bin gives you bin first, which works fine. Confirm it with dvm doctor."
+        },
+        {
+          "h": "On a Windows runner",
+          "a": "on-a-windows-runner",
+          "b": "The same three steps, with the release zip in place of the install script — see Installation for where the binary comes from. Name the dvm version, the way the Dockerfile above does, so the job installs the same dvm every time: name: Install dvm shell: pwsh env: DVM_VERSION: v0.2.0 run: $zip = \"$env:RUNNER_TEMP\\dvm.zip\" Invoke-WebRequest -OutFile $zip -Uri \"https://github.com/mrgnhnt96/dvm/releases/download/$env:DVM_VERSION/dvm-windows-x64.zip\" Expand-Archive $zip -DestinationPath \"$env:USERPROFILE\\.dvm\\bin\" \"$env:USERPROFILE\\.dvm\\bin\" Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8 name: Install the pinned SDK run: dvm install 3.13.2 name: Test run: dvm exec dart test dvm install, dvm exec and dvm which behave the same there as anywhere else, and the cache step above already keys on runner.os, so adding windows-latest to a matrix caches its SDKs separately without another change."
+        },
+        {
+          "h": "Verify before you rely on it",
+          "a": "verify-before-you-rely-on-it",
+          "b": "run: dvm which One line in the log that names the SDK and the rule that chose it turns \"which Dart did that build actually use?\" from an investigation into a scroll."
+        }
+      ]
+    },
+    {
+      "u": "/guides/troubleshooting",
+      "t": "Troubleshooting",
+      "d": "The failures that look like dvm doing nothing at all.",
+      "g": "Guides",
+      "s": [
+        {
+          "b": "Start here: dvm doctor dvm which doctor covers the machine — PATH, shims, shell startup files, config. which covers this directory — which SDK, and which of the five rules chose it. Between them they name almost everything on this page."
+        },
+        {
+          "h": "dart --version is not the version I pinned",
+          "a": "dart---version-is-not-the-version-i-pinned",
+          "b": "Check what dart even is: which dart If it is not ~/.dvm/shims/dart, the shim is not being reached and your pin is irrelevant. Two causes: Something earlier on PATH supplies a dart. PATH is searched left to right, so Homebrew's dart, a Flutter SDK's bundled dart, or /usr/local/bin/dart appearing before ~/.dvm/shims wins. There is no error — that is the whole problem. dvm doctor prints the offending entry. Move ~/.dvm/shims to the front and start a new shell. You never ran dvm setup. The shim does not exist yet. If which dart is the shim, the pin is being resolved and the answer is not what you expected. Run dvm which — it names the rule and the file."
+        },
+        {
+          "h": "dvm runs, but it is not the dvm I installed",
+          "a": "dvm-runs-but-it-is-not-the-dvm-i-installed",
+          "b": "The one that costs an afternoon. The older cbracken/dvm installs itself as a shell function sourced from .zshrc or .bashrc. A shell function is resolved before PATH is searched at all, so the binary you installed is never reached — and the two tools have enough overlapping command names that the errors read like your own mistakes. type dvm \"dvm is a shell function\" => this is you dvm doctor reports it by file and line. Delete the line that sources the old script and start a new shell."
+        },
+        {
+          "h": "DVM_DART_VERSION is set and I forgot",
+          "a": "dvm_dart_version-is-set-and-i-forgot",
+          "b": "Rule 1 beats everything on disk, including the .dvmrc you are looking at. echo \"$DVM_DART_VERSION\" dvm which says so outright when this is what happened: Chosen by rule 1 of 5: DVM_DART_VERSION is set in the environment, which overrides everything on disk. Common source: a shell exported it in an earlier command, or a CI job set it at the workflow level and you are debugging a step that inherits it."
+        },
+        {
+          "h": "\"is pinned by … but it is not installed\"",
+          "a": "is-pinned-by--but-it-is-not-installed",
+          "b": "dvm: Dart 3.9.0 is pinned by /Users/you/code/api/.dvmrc, but it is not installed. Run: dvm install 3.9.0 Exactly what it says. dvm refuses to fall through to another SDK, because silently running a different version than the project asked for is the failure the tool exists to prevent. dvm install 3.9.0 Or, if the pin is wrong, dvm use ."
+        },
+        {
+          "h": "\"no stable SDK has been installed, so dvm does not know which version that is\"",
+          "a": "no-stable-sdk-has-been-installed-so-dvm-does-not-know-which-version-that-is",
+          "b": "Your pin says stable, but nothing has recorded what stable means on this machine. Resolution answers a channel name from config.json, so stable means whatever was written down when you last ran dvm install stable. Run it: dvm install stable"
+        },
+        {
+          "h": "\"No Dart SDK applies in …\"",
+          "a": "no-dart-sdk-applies-in-",
+          "b": "Rule 5: nothing matched. The message lists all four things it checked. Pick one: dvm use pin this project dvm global set a machine-wide fallback"
+        },
+        {
+          "h": "An SDK is installed but marked BROKEN: no bin/dart",
+          "a": "an-sdk-is-installed-but-marked-broken-no-bindart",
+          "b": "An interrupted install, or something in ~/.dvm/versions that is not an SDK. dvm list shows it and marks it, because a few hundred megabytes of unusable disk is worth knowing about. dvm remove --force dvm install"
+        },
+        {
+          "h": "The global default names something that is not installed",
+          "a": "the-global-default-names-something-that-is-not-installed",
+          "b": "The global default names 3.9.0, which is not installed. Run: dvm install 3.9.0 This is what dvm remove --force leaves behind, and while it lasts, every command run outside a pinned project fails. Either install it or repoint it with dvm global."
+        },
+        {
+          "h": "My IDE has not noticed the pin",
+          "a": "my-ide-has-not-noticed-the-pin",
+          "b": "The dart on PATH is only half the story for editors — many want an SDK directory. dvm use writes one for exactly this: .dvm/dart_sdk -> ~/.dvm/versions/3.13.2 It sits in the directory that holds the .dvmrc, so in a monorepo look next to the pin that governs your package rather than in the package you are standing in. Point the analyzer or Dart plugin at it and it follows the pin along with everything else. Keep it out of version control — it is an absolute path into your home directory."
+        },
+        {
+          "h": "The .dvm/ symlink got committed",
+          "a": "the-dvm-symlink-got-committed",
+          "b": "git rm --cached -r .dvm dvm use --gitignore The second command appends .dvm/ to .gitignore for you; dvm makes that edit when you pass the flag."
+        },
+        {
+          "h": "dvm exec: command not found: X",
+          "a": "dvm-exec-command-not-found-x",
+          "b": "Exit code 127, the same as a shell. The command was not on the child's PATH — which is the pinned SDK's bin, then everything you already had. If X is a globally activated Dart executable, it lives in ~/.pub-cache/bin, which has to be on your PATH for dvm exec to find it too."
+        },
+        {
+          "h": "An interrupted install",
+          "a": "an-interrupted-install",
+          "b": "~/.dvm/cache holds in-flight downloads and is safe to delete at any time: rm -rf ~/.dvm/cache Extraction happens in cache/ and is renamed into place atomically, so versions/ only ever holds complete SDKs and cache/ is the whole of the cleanup."
+        },
+        {
+          "h": "Still stuck",
+          "a": "still-stuck",
+          "b": "dvm doctor output and dvm which output, together, describe the whole state that decides which SDK you get. They are the right thing to paste into an issue."
+        }
+      ]
+    }
+  ]
+}

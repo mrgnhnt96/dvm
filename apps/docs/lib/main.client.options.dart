@@ -14,6 +14,7 @@ import 'package:jaspr_content/components/sidebar_toggle_button.dart'
     deferred as _sidebar_toggle_button;
 import 'package:jaspr_content/components/theme_toggle.dart'
     deferred as _theme_toggle;
+import 'package:jaspr_search/src/search_dialog.dart' deferred as _search_dialog;
 
 /// Default [ClientOptions] for use with your Jaspr project.
 ///
@@ -52,6 +53,20 @@ ClientOptions get defaultClientOptions => ClientOptions(
     'jaspr_content:theme_toggle': ClientLoader(
       (p) => _theme_toggle.ThemeToggle(),
       loader: _theme_toggle.loadLibrary,
+    ),
+    'jaspr_search:search_dialog': ClientLoader(
+      (p) => _search_dialog.SearchDialog(
+        indexPath: p['indexPath'] as String,
+        triggerLabel: p['triggerLabel'] as String,
+        triggerAriaLabel: p['triggerAriaLabel'] as String,
+        placeholder: p['placeholder'] as String,
+        noResultsHint: p['noResultsHint'] as String,
+        enableSlashShortcut: p['enableSlashShortcut'] as bool,
+        includeDefaultStyles: p['includeDefaultStyles'] as bool,
+        maxPerDoc: p['maxPerDoc'] as int,
+        maxResults: p['maxResults'] as int,
+      ),
+      loader: _search_dialog.loadLibrary,
     ),
   },
 );
