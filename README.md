@@ -20,7 +20,7 @@ No Dart SDK is required to install dvm — the install script fetches a prebuilt
 binary, which is the point: you cannot need Dart to install the thing that
 installs Dart.
 
-Docs: <https://mrgnhnt.com/dvm/>
+Docs: <https://dvm.mrgnhnt.com>
 
 ## Status
 

@@ -20,15 +20,23 @@ name: Deploy docs
 # in the dispatch, so pick `main` unless you specifically mean to publish
 # something else.
 #
-# The site is served at https://mrgnhnt.com/dvm/ — a PROJECT site under the
-# account's custom domain, so everything lives under the `/dvm/` path. That is
-# what the "Rebase onto the /dvm/ subpath" step below is for; see
-# tool/rebase_static_site.dart for why a static jaspr build cannot emit those
-# URLs itself.
+# The site is served at https://dvm.mrgnhnt.com, which the site owns outright:
+# a subdomain serves from its own domain root, so every route hangs off `/` and
+# a static jaspr build's `<base href="/">` and root-absolute references are
+# already correct. The build output is uploaded exactly as jaspr emits it.
 #
-# No CNAME file is written. The custom domain comes from the ACCOUNT-level Pages
-# configuration, not from this repository — `gh api repos/mrgnhnt96/dvm/pages`
-# reports the live value, and adding a CNAME here would not be what serves it.
+# No CNAME file is written, and that is the documented behaviour rather than an
+# omission. `dvm.mrgnhnt.com` is a REPO-level custom domain stored in this
+# repository's own Pages configuration, and GitHub's docs state it plainly for
+# this publishing source: "If you are publishing from a custom GitHub Actions
+# workflow, no CNAME file is created, and any existing CNAME file is ignored and
+# is not required."
+# (docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site
+#  /managing-a-custom-domain-for-your-github-pages-site, "Configuring a subdomain")
+#
+# So the domain survives a deploy because the Pages config holds it, and adding
+# a CNAME to apps/docs/web/ would be inert either way. `gh api
+# repos/mrgnhnt96/dvm/pages` reports the live value.
 #
 # This uses actions/deploy-pages directly, rather than pushing build output to a
 # second repository: GitHub allows one Pages site per repository and this repo's
@@ -72,16 +80,6 @@ jobs:
       - name: Build docs
         working-directory: apps/docs
         run: dart run jaspr_cli:jaspr build
-
-      # A static jaspr build has no request to derive a base path from, so it
-      # emits `<base href="/">` and root-absolute references and assumes it owns
-      # the domain root. Under /dvm/ every one of those is a 404 — and a silent
-      # one: the pages render fine and the links simply do not resolve.
-      #
-      # The script exits non-zero if it rewrote nothing, so a build that stopped
-      # emitting references fails here rather than deploying an inert site.
-      - name: Rebase onto the /dvm/ subpath
-        run: dart run tool/rebase_static_site.dart --prefix /dvm apps/docs/build/jaspr
 
       # jaspr leaves its own build bookkeeping inside the output directory; it
       # is not part of the site and there is no reason to publish it.

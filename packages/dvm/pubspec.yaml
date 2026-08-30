@@ -6,7 +6,7 @@ description: >
 version: 0.1.0
 repository: https://github.com/mrgnhnt96/dvm
 issue_tracker: https://github.com/mrgnhnt96/dvm/issues
-documentation: https://mrgnhnt.com/dvm/
+documentation: https://dvm.mrgnhnt.com
 
 resolution: workspace
 

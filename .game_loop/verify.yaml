@@ -102,27 +102,14 @@
 # owner.
 #
 # `cd apps/docs && dart test` is minutes, not seconds: it runs a real
-# `jaspr build` and then serves the output under /dvm/. That is deliberate — the
-# failure mode this site has is a silent 404 under the path prefix, and nothing
-# short of serving it catches that.
+# `jaspr build` and then serves the output at the domain root. That is
+# deliberate — the failure mode this site has is a silent 404 on a reference
+# that resolves nowhere, and nothing short of serving it and fetching what the
+# pages point at catches that.
 "apps/docs/**":
   - "dart pub get && dart analyze"
   - "dart format --output=none --set-exit-if-changed apps/docs"
   - "cd apps/docs && dart test"
-
-# The subpath rewriter is published as part of the site, so its consumer is the
-# built output — not its own unit tests. Both run.
-"tool/rebase_static_site.dart":
-  - "dart analyze tool/rebase_static_site.dart"
-  - "dart format --output=none --set-exit-if-changed tool test"
-  - "dart test test/rebase_static_site_test.dart"
-  - "cd apps/docs && dart test test/build_smoke_test.dart"
-
-# The workspace root's own test directory, which is where the rewriter's unit
-# tests live.
-"test/**":
-  - "dart format --output=none --set-exit-if-changed test"
-  - "dart test"
 
 unchecked-ok:
   # Prose at the repo root. Wrong content here is a review problem, not

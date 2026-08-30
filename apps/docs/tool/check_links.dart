@@ -98,9 +98,8 @@ String? _problemWith(
 
   // Site routes are absolute. A relative link would resolve differently
   // depending on whether the page is served with a trailing slash, so the
-  // docs never use one and neither should a new page. (The `/dvm/` prefix the
-  // deployed site is served under is applied to the BUILT OUTPUT by
-  // `tool/rebase_static_site.dart`, so it never appears in `content/`.)
+  // docs never use one and neither should a new page. The deployed site owns
+  // its domain root, so an absolute route here is what the browser requests.
   if (!target.startsWith('/')) {
     return 'relative link — write it as an absolute site path (e.g. /commands/install)';
   }
