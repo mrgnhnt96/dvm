@@ -12,7 +12,14 @@
     "git push --force"
   ],
   "upstream_repos": [],
-  "mcp_read_only_tools": [],
+  "mcp_read_only_tools": [
+    "mcp__llm_chat__channels",
+    "mcp__llm_chat__pending",
+    "mcp__llm_chat__who",
+    "mcp__llm_chat__doctor",
+    "mcp__llm_chat__fingerprint",
+    "mcp__llm_chat__owed"
+  ],
   "trans_nudge_every": 12,
   "watchdog": {
     "idle_sec": 30,
