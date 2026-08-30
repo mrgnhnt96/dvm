@@ -1,6 +1,6 @@
-import 'package:dvm_cli/dvm.dart';
-import 'package:dvm_cli/src/archive/dart_archive_client.dart';
-import 'package:dvm_cli/src/archive/dart_archive_exception.dart';
+import 'package:dvm/dvm.dart';
+import 'package:dvm/src/archive/dart_archive_client.dart';
+import 'package:dvm/src/archive/dart_archive_exception.dart';
 import 'package:test/test.dart';
 
 import 'fake_archive_server.dart';

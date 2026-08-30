@@ -1,5 +1,5 @@
-import 'package:dvm_cli/src/archive/dart_archive_exception.dart';
-import 'package:dvm_cli/src/archive/sdk_extractor.dart';
+import 'package:dvm/src/archive/dart_archive_exception.dart';
+import 'package:dvm/src/archive/sdk_extractor.dart';
 import 'package:file/file.dart';
 import 'package:file/memory.dart';
 import 'package:test/test.dart';

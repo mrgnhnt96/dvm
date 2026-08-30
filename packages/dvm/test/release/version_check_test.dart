@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:dvm_cli/dvm.dart';
-import 'package:dvm_cli/dvm.dart' as dvm;
+import 'package:dvm/dvm.dart';
+import 'package:dvm/dvm.dart' as dvm;
 import 'package:file/memory.dart';
 import 'package:test/test.dart';
 

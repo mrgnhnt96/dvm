@@ -1,4 +1,4 @@
-name: dvm_cli
+name: dvm
 description: >
   A per-project Dart SDK version manager. Keeps every SDK in one central
   cache, pins a version per project with .dvmrc, and forwards commands to
@@ -19,11 +19,6 @@ environment:
 # "Distribution" section says why.)
 publish_to: none
 
-# The executable is `dvm` even though the package is `dvm_cli`. The short name
-# was unavailable on pub.dev, which no longer constrains anything now that we
-# do not publish -- but the package name is load-bearing in every
-# `package:dvm_cli/...` import, so renaming it is a mechanical change worth
-# doing deliberately, not a drive-by. What a user types is `dvm` regardless.
 executables:
   dvm:
 

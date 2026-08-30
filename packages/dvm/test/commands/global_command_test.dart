@@ -1,4 +1,4 @@
-import 'package:dvm_cli/dvm.dart';
+import 'package:dvm/dvm.dart';
 import 'package:test/test.dart';
 
 import 'harness.dart';

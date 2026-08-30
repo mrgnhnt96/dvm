@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:dvm_cli/dvm.dart';
-import 'package:dvm_cli/src/core/runner.dart';
+import 'package:dvm/dvm.dart';
+import 'package:dvm/src/core/runner.dart';
 import 'package:file/local.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';

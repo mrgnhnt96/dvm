@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
-import 'package:dvm_cli/dvm.dart';
-import 'package:dvm_cli/src/archive/dart_archive_client.dart';
-import 'package:dvm_cli/src/archive/sdk_downloader.dart';
+import 'package:dvm/dvm.dart';
+import 'package:dvm/src/archive/dart_archive_client.dart';
+import 'package:dvm/src/archive/sdk_downloader.dart';
 import 'package:file/memory.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';

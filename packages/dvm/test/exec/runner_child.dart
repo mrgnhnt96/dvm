@@ -6,7 +6,7 @@
 // exactly what `dvm dart` and `dvm exec` do, minus the resolution.
 import 'dart:io';
 
-import 'package:dvm_cli/src/core/runner.dart';
+import 'package:dvm/src/core/runner.dart';
 
 Future<void> main(List<String> args) async {
   exitCode = await const OsProcessRunner().run(args.first, args.sublist(1));
