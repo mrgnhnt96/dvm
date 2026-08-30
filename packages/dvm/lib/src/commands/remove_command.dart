@@ -1,4 +1,5 @@
 import 'package:args/command_runner.dart';
+import 'package:file/file.dart';
 
 import '../core/context.dart';
 import '../core/exceptions.dart';
@@ -66,7 +67,11 @@ class RemoveCommand extends Command<int> {
       return 1;
     }
 
-    directory.deleteSync(recursive: true);
+    final refusal = _deleteSdk(directory, version);
+    if (refusal != null) {
+      context.err.writeln(refusal);
+      return 1;
+    }
     context.out.writeln('Removed Dart $version (${directory.path}).');
 
     _dropStaleChannelRecords(version);
@@ -78,6 +83,43 @@ class RemoveCommand extends Command<int> {
     }
     _warnAboutProjectPin(version);
     return 0;
+  }
+
+  /// Deletes the SDK at [directory], or returns the sentence to print instead
+  /// of "Removed Dart [version]".
+  ///
+  /// The delete is the one step in this command that asks the operating system
+  /// for something it is entitled to refuse, and Windows refuses it routinely:
+  /// a file cannot be deleted there while a program is running it, so
+  /// `dvm remove` aimed at the SDK an editor's analysis server was started
+  /// from comes back with ERROR_ACCESS_DENIED. Left uncaught, the Dart VM
+  /// turned that into a stack trace and exit 255 — a crash report, for a
+  /// situation the user can clear in ten seconds once someone names it.
+  ///
+  /// POSIX unlinks a running executable happily, because the inode outlives
+  /// the directory entry, which is why this only ever showed up on Windows.
+  String? _deleteSdk(Directory directory, String version) {
+    try {
+      directory.deleteSync(recursive: true);
+      return null;
+    } on FileSystemException catch (error) {
+      // The OS's own words, not this exception's `toString`, which leads with
+      // the class name and repeats the path.
+      final said = error.osError?.message ?? error.message;
+      final advice = context.paths.isWindows
+          ? 'Windows keeps a hold on a file while a program is running it, so '
+              'something started from this SDK is most likely still up: an '
+              'editor analysing a project pinned to it, a `dart` or `dart run` '
+              'in another terminal, a language server. Close it and run this '
+              'again.'
+          : 'Check that everything under it is yours to delete and that '
+              'nothing has it open, then run this again.';
+      return 'Could not remove Dart $version: $said\n'
+          '  ${directory.path}\n'
+          '$advice\n'
+          'Part of the SDK may already have been deleted before this stopped, '
+          'so running the same command again is what finishes the job.';
+    }
   }
 
   /// What still names [version] and would break if it went away.

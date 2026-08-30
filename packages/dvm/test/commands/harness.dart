@@ -10,8 +10,15 @@ import 'package:file/memory.dart';
 /// command asks for the home directory by hand. The environment is mutable
 /// because two of the five resolution rules are environment facts.
 class CommandHarness {
-  CommandHarness() {
-    fileSystem = MemoryFileSystem.test();
+  /// [opHandle] is `MemoryFileSystem`'s seam for making one filesystem call
+  /// fail. A memory filesystem otherwise never refuses anything, so it is the
+  /// only way to drive the branches that exist because a real one does.
+  CommandHarness({
+    void Function(String path, FileSystemOp operation)? opHandle,
+  }) {
+    fileSystem = MemoryFileSystem.test(
+      opHandle: opHandle ?? (_, __) {},
+    );
     fileSystem.directory(projectPath).createSync(recursive: true);
     fileSystem.currentDirectory = projectPath;
     paths = DvmPaths(fileSystem: fileSystem, environment: environment);
