@@ -1,6 +1,6 @@
 import 'package:args/command_runner.dart';
-import 'package:dvm_cli/dvm.dart';
-import 'package:dvm_cli/src/commands/setup_command.dart';
+import 'package:dvm/dvm.dart';
+import 'package:dvm/src/commands/setup_command.dart';
 import 'package:file/file.dart';
 import 'package:file/memory.dart';
 import 'package:test/test.dart';

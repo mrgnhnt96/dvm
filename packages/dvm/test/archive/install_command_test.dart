@@ -1,9 +1,9 @@
 import 'dart:convert';
 
-import 'package:dvm_cli/dvm.dart';
-import 'package:dvm_cli/src/archive/dart_archive_client.dart';
-import 'package:dvm_cli/src/archive/sdk_extractor.dart';
-import 'package:dvm_cli/src/archive/sdk_installer.dart';
+import 'package:dvm/dvm.dart';
+import 'package:dvm/src/archive/dart_archive_client.dart';
+import 'package:dvm/src/archive/sdk_extractor.dart';
+import 'package:dvm/src/archive/sdk_installer.dart';
 import 'package:file/memory.dart';
 import 'package:test/test.dart';
 

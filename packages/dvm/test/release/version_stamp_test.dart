@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:dvm_cli/dvm.dart';
+import 'package:dvm/dvm.dart';
 import 'package:test/test.dart';
 
 /// The version this build reports has to be the one the release is cut at.

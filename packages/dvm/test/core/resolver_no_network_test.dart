@@ -15,19 +15,18 @@ import 'package:test/test.dart';
 void main() {
   test('nothing reachable from resolver.dart can make a network call',
       () async {
-    final closure =
-        await _importClosure('package:dvm_cli/src/core/resolver.dart');
+    final closure = await _importClosure('package:dvm/src/core/resolver.dart');
 
     // The walk itself has to be shown to have worked: an empty or one-file
     // closure would pass every assertion below while having looked at nothing.
     expect(
       closure.keys,
       containsAll([
-        'package:dvm_cli/src/core/resolver.dart',
-        'package:dvm_cli/src/core/config.dart',
-        'package:dvm_cli/src/core/paths.dart',
-        'package:dvm_cli/src/core/channel.dart',
-        'package:dvm_cli/src/core/exceptions.dart',
+        'package:dvm/src/core/resolver.dart',
+        'package:dvm/src/core/config.dart',
+        'package:dvm/src/core/paths.dart',
+        'package:dvm/src/core/channel.dart',
+        'package:dvm/src/core/exceptions.dart',
       ]),
       reason: 'the import walk did not reach the files it should have',
     );
@@ -54,7 +53,7 @@ void main() {
     // stay out of this graph.
     expect(
       closure.keys,
-      isNot(contains('package:dvm_cli/src/core/releases.dart')),
+      isNot(contains('package:dvm/src/core/releases.dart')),
       reason: 'the resolver can reach the release client',
     );
   });

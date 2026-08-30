@@ -1,6 +1,6 @@
-import 'package:dvm_cli/dvm.dart';
+import 'package:dvm/dvm.dart';
 // The entrypoint is `run`, and so is this harness's method for calling it.
-import 'package:dvm_cli/dvm.dart' as dvm;
+import 'package:dvm/dvm.dart' as dvm;
 import 'package:file/file.dart';
 import 'package:file/memory.dart';
 

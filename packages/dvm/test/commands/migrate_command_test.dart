@@ -1,7 +1,7 @@
 import 'package:args/command_runner.dart';
-import 'package:dvm_cli/dvm.dart';
-import 'package:dvm_cli/src/commands/migrate_command.dart';
-import 'package:dvm_cli/src/core/migrate.dart';
+import 'package:dvm/dvm.dart';
+import 'package:dvm/src/commands/migrate_command.dart';
+import 'package:dvm/src/core/migrate.dart';
 import 'package:file/file.dart';
 import 'package:test/test.dart';
 
