@@ -28,10 +28,8 @@ final class NavItem {
 
   /// Root-absolute route, e.g. `/commands/install`.
   ///
-  /// Root-absolute even though the site is served under `/dvm/`: everything
-  /// here is written as if the site owned the domain root, and
-  /// `tool/rebase_static_site.dart` rewrites the built output afterwards. See
-  /// that script for why the prefix cannot be applied at this layer.
+  /// The site owns its domain root, so a route written here is the path the
+  /// browser actually requests. See `site.dart` for where that is decided.
   final String href;
 
   /// One-line description, shown on the landing page's cards.

@@ -47,12 +47,11 @@ void main() {
         DvmDocsLayout(
           header: Header(
             title: 'dvm',
-            // Root-absolute, like every other reference on the site;
-            // `tool/rebase_static_site.dart` prefixes it at build time.
+            // Root-absolute, like every other reference on the site: the
+            // site owns its domain root, so this reaches the browser as-is.
             logo: '/images/logo.svg',
             items: [
-              // Root-absolute, like every other link on the site;
-              // `tool/rebase_static_site.dart` prefixes it at build time.
+              // Root-absolute, like every other link on the site.
               const _GitHubLink(),
               ThemeToggle(),
             ],
@@ -73,8 +72,8 @@ void main() {
 
 /// The one link in the header that leaves the site.
 ///
-/// Absolute and external on purpose: `tool/rebase_static_site.dart` must not
-/// touch it, and a test asserts that external URLs survive the rewrite.
+/// Absolute and external on purpose: it leaves the site entirely, so it is the
+/// one reference `build_smoke_test.dart` deliberately does not try to fetch.
 final class _GitHubLink extends StatelessComponent {
   const _GitHubLink();
 
@@ -126,12 +125,9 @@ final class DvmDocsLayout extends DocsLayout {
   @override
   Iterable<Component> buildHead(Page page) sync* {
     yield* super.buildHead(page);
-    // Root-absolute, like every other reference on the site;
-    // `tool/rebase_static_site.dart` prefixes it at build time. That script
-    // rewrites URL-bearing attributes on ANY tag rather than on a list of known
-    // elements, so a `<link rel="icon" href="/...">` is prefixed the same way
-    // the header logo is — `build_smoke_test.dart` fetches every `href` on a
-    // page served under the prefix, so this one is checked rather than assumed.
+    // Root-absolute, like every other reference on the site, and served
+    // straight off the domain root. `build_smoke_test.dart` fetches every
+    // `href` on the pages it loads, so this one is checked rather than assumed.
     //
     // Yielded here rather than set through jaspr_content's own `favicon` site
     // key, because `PageLayoutBase.buildHead` hardcodes `type: 'image/png'` on
