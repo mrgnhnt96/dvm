@@ -37,18 +37,18 @@ class DvmPaths {
       fileSystem.file(_join(sdkDir.path, 'bin', dartExecutableName));
 
   /// `dart` everywhere, `dart.exe` on Windows.
-  String get dartExecutableName => _isWindows ? 'dart.exe' : 'dart';
+  String get dartExecutableName => isWindows ? 'dart.exe' : 'dart';
 
   /// The names a real `dart` can have on PATH, most likely first.
   ///
   /// Windows resolves a bare `dart` through PATHEXT, so both spellings have to
   /// be probed when scanning PATH by hand.
   List<String> get pathExecutableNames =>
-      _isWindows ? const ['dart.exe', 'dart.bat'] : const ['dart'];
+      isWindows ? const ['dart.exe', 'dart.bat'] : const ['dart'];
 
   /// The shim dvm installs on PATH.
   File get dartShim =>
-      fileSystem.file(_join(shimsDir.path, _isWindows ? 'dart.bat' : 'dart'));
+      fileSystem.file(_join(shimsDir.path, isWindows ? 'dart.bat' : 'dart'));
 
   /// The gitignored per-project directory holding the IDE symlink.
   Directory projectDvmDir(Directory project) => _child(project, '.dvm');
@@ -64,7 +64,13 @@ class DvmPaths {
   /// The name of the per-project pin file.
   static const String dvmrcFileName = '.dvmrc';
 
-  bool get _isWindows => fileSystem.path.style == p.Style.windows;
+  /// Whether the paths this resolves are Windows paths.
+  ///
+  /// The FILESYSTEM's style rather than the host's, because every path
+  /// question here is about the filesystem being written to -- which under
+  /// test is an injected one that may be styled differently from the machine
+  /// running the suite.
+  bool get isWindows => fileSystem.path.style == p.Style.windows;
 
   String _join(String a, [String? b, String? c]) =>
       fileSystem.path.join(a, b, c);
@@ -81,7 +87,7 @@ class DvmPaths {
     // USERPROFILE first on Windows, HOME first elsewhere, but accept either:
     // Git Bash and MSYS set HOME on Windows, and some containers set only
     // USERPROFILE.
-    final candidates = _isWindows
+    final candidates = isWindows
         ? const ['USERPROFILE', 'HOME']
         : const ['HOME', 'USERPROFILE'];
     for (final variable in candidates) {

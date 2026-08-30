@@ -1,4 +1,8 @@
+import 'dart:io' show OSError, PathAccessException;
+
 import 'package:dvm/dvm.dart';
+import 'package:dvm/dvm.dart' as dvm;
+import 'package:file/memory.dart';
 import 'package:test/test.dart';
 
 import 'harness.dart';
@@ -130,6 +134,98 @@ void main() {
         harness.errors,
         contains('/project/.dvmrc pins the version just '
             'removed'));
+  });
+
+  group('when the filesystem refuses the delete', () {
+    /// What Windows returns for `DeleteFileW` on a file a process is running.
+    ///
+    /// A real one, quoted from CI run 33284815252 on windows-latest, where it
+    /// reached the user as an unhandled exception, a twelve-frame VM stack
+    /// trace, and exit 255.
+    PathAccessException accessDenied(String path) => PathAccessException(
+          path,
+          const OSError('Access is denied.', 5),
+          'Deletion failed',
+        );
+
+    /// Fails the delete of `versions/<version>` and nothing else.
+    void Function(String, FileSystemOp) denyDeleting(String version) =>
+        (String path, FileSystemOp operation) {
+          if (operation == FileSystemOp.delete && path.endsWith(version)) {
+            throw accessDenied(path);
+          }
+        };
+
+    test('reports it and exits 1 instead of crashing with a stack trace',
+        () async {
+      harness = CommandHarness(opHandle: denyDeleting('3.9.0'));
+      harness.installVersion('3.9.0');
+
+      expect(await harness.run(['remove', '3.9.0']), 1);
+
+      // The OS's own words and the path it named, so the user can act on it.
+      expect(harness.errors, contains('Could not remove Dart 3.9.0'));
+      expect(harness.errors, contains('Access is denied.'));
+      expect(harness.errors, contains('/dvm/versions/3.9.0'));
+      // A report, not a crash.
+      expect(harness.errors, isNot(contains('PathAccessException')));
+      expect(harness.errors, isNot(contains('#0')));
+    });
+
+    test('claims nothing it did not do', () async {
+      harness = CommandHarness(opHandle: denyDeleting('3.13.2'));
+      harness
+        ..installVersion('3.13.2')
+        ..writeConfig(const DvmConfig(channels: {'stable': '3.13.2'}));
+      harness.fileSystem.file('/project/.dvmrc').writeAsStringSync('3.13.2');
+
+      await harness.run(['remove', '3.13.2']);
+
+      // Everything after the delete describes a version that is gone, and none
+      // of it is true when the delete was refused. The channel record is the
+      // one that would be DESTROYED on the way past, leaving the config
+      // disagreeing with a cache that never changed.
+      expect(harness.output, isNot(contains('Removed Dart 3.13.2')));
+      expect(harness.errors, isNot(contains('pins the version just removed')));
+      expect(harness.readConfig().channels, {'stable': '3.13.2'});
+      expect(
+        harness.fileSystem.directory('/dvm/versions/3.13.2').existsSync(),
+        isTrue,
+      );
+    });
+
+    test('on Windows it names the thing that actually causes this', () async {
+      // A Windows-styled filesystem, because the advice is chosen from the
+      // paths dvm is working with rather than from the host running the suite
+      // -- and the whole point of the sentence is that it is Windows-specific:
+      // POSIX unlinks a running executable without complaint.
+      final fileSystem = MemoryFileSystem.test(
+        style: FileSystemStyle.windows,
+        opHandle: (String path, FileSystemOp operation) {
+          if (operation == FileSystemOp.delete && path.endsWith('3.9.0')) {
+            throw accessDenied(path);
+          }
+        },
+      );
+      fileSystem
+          .file(r'C:\dvm\versions\3.9.0\bin\dart.exe')
+          .createSync(recursive: true);
+
+      final out = StringBuffer();
+      final err = StringBuffer();
+      final code = await dvm.run(
+        ['remove', '3.9.0'],
+        fileSystem: fileSystem,
+        environment: {'DVM_HOME': r'C:\dvm', 'PATH': ''},
+        platformVersion: '3.13.2 (stable) on "windows_x64"',
+        out: out,
+        err: err,
+      );
+
+      expect(code, 1);
+      expect(err.toString(), contains(r'C:\dvm\versions\3.9.0'));
+      expect(err.toString(), contains('while a program is running it'));
+    });
   });
 
   group('bad usage', () {

@@ -402,15 +402,30 @@ class _Smoke {
       '${directory.path}${Platform.pathSeparator}$_dvmName',
     );
 
-    // A child that stays alive long enough to be replaced underneath, and
-    // exits on its own if anything here goes wrong.
+    // A child that stays alive long enough to be replaced underneath, waits to
+    // be told to go, and exits on its own after thirty seconds if anything
+    // here goes wrong.
+    //
+    // Told rather than timed, because being told is what lets the check that
+    // follows this one KNOW the child is gone. It runs `dart` out of the SDK
+    // that `_remove` deletes a few checks later, and Windows will not delete a
+    // file a program is running -- so a child that merely sleeps for a fixed
+    // half-minute fails `dvm remove` for a reason that has nothing to do with
+    // `dvm remove`. It did: CI run 33284815252 on windows-latest, where all
+    // five `dvm remove` checks failed on ERROR_ACCESS_DENIED.
+    final ready = '${directory.path}${Platform.pathSeparator}ready';
+    final stop = '${directory.path}${Platform.pathSeparator}stop';
+    final done = '${directory.path}${Platform.pathSeparator}done';
     final sleeper = File('${directory.path}${Platform.pathSeparator}wait.dart')
       ..writeAsStringSync(
         "import 'dart:io';\n\n"
         'Future<void> main() async {\n'
-        "  File(r'${directory.path}${Platform.pathSeparator}ready')"
-        ".writeAsStringSync('up');\n"
-        '  await Future<void>.delayed(const Duration(seconds: 30));\n'
+        "  File(r'$ready').writeAsStringSync('up');\n"
+        "  final stop = File(r'$stop');\n"
+        '  for (var i = 0; i < 300 && !stop.existsSync(); i++) {\n'
+        '    await Future<void>.delayed(const Duration(milliseconds: 100));\n'
+        '  }\n'
+        "  File(r'$done').writeAsStringSync('out');\n"
         '}\n',
       );
 
@@ -427,12 +442,12 @@ class _Smoke {
     unawaited(process.stdout.drain<void>());
     unawaited(process.stderr.drain<void>());
 
-    final ready = File('${directory.path}${Platform.pathSeparator}ready');
-    for (var i = 0; i < 300 && !ready.existsSync(); i++) {
+    final readyFile = File(ready);
+    for (var i = 0; i < 300 && !readyFile.existsSync(); i++) {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
-    if (!ready.existsSync()) {
-      process.kill();
+    if (!readyFile.existsSync()) {
+      await _stopTheRunningCopy(process, stop: stop, done: done);
       _record(
         'a copy of dvm was running to be replaced',
         false,
@@ -479,7 +494,7 @@ class _Smoke {
       replaceFailure ?? 'ok',
     );
 
-    process.kill();
+    await _stopTheRunningCopy(process, stop: stop, done: done);
 
     // The point of all of it: what is at that path now has to RUN.
     final replaced = await _dvm(
@@ -489,6 +504,66 @@ class _Smoke {
     );
     _expect(replaced, contains: 'dvm ');
     stdout.writeln('');
+  }
+
+  /// Stops the child [_replaceRunningBinary] started, and everything it
+  /// started.
+  ///
+  /// [process] is the dvm copy. The `dart` it spawned out of the installed SDK
+  /// is a GRANDCHILD, and killing a parent does not kill a grandchild on any
+  /// platform -- so `process.kill()` on its own leaves an SDK binary running.
+  /// That is what broke `dvm remove` on windows-latest in CI run 33284815252:
+  /// Windows will not delete a file a program is running, so `remove` came
+  /// back with ERROR_ACCESS_DENIED on a `dart.exe` this check had orphaned,
+  /// half a second earlier, and every one of its five assertions failed.
+  ///
+  /// So the child is asked to leave and then WAITED FOR. `Process.exitCode` is
+  /// no help here: a process started detached has no parent left to report it
+  /// to, so the handshake goes through files.
+  Future<void> _stopTheRunningCopy(
+    Process process, {
+    required String stop,
+    required String done,
+  }) async {
+    File(stop).writeAsStringSync('stop');
+
+    final left = File(done);
+    for (var i = 0; i < 100 && !left.existsSync(); i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    // Belt and braces, and the only thing that helps if the child never read
+    // its stop file.
+    process.kill();
+
+    // `done` is written just BEFORE the VM shuts down, so the executable can
+    // still be mapped for a moment after it appears -- and being mapped is the
+    // entire problem. Neither Windows nor Linux will open a running executable
+    // for writing, so a write handle that opens is that `dart` really being
+    // finished with. Append mode, so the probe cannot alter a byte of the SDK
+    // the checks below run against.
+    final sdkDart = File(
+      <String>[
+        dvmHome.path,
+        'versions',
+        sdkVersion,
+        'bin',
+        Platform.isWindows ? 'dart.exe' : 'dart',
+      ].join(Platform.pathSeparator),
+    );
+    if (!sdkDart.existsSync()) return;
+    for (var i = 0; i < 100; i++) {
+      try {
+        sdkDart.openSync(mode: FileMode.append).closeSync();
+        return;
+      } on FileSystemException {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+    }
+    stdout.writeln(
+      'NOTE: ${sdkDart.path} was still held ten seconds after the child was '
+      'told to stop, so the checks below run against an SDK something else is '
+      'using.',
+    );
   }
 
   /// The failure path: a version that is not published anywhere.
