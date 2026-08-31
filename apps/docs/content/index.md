@@ -39,7 +39,7 @@ Then check it with: dvm doctor
 
 From there, [`dvm install`](/commands/install) puts an SDK in the cache and [`dvm use`](/commands/use) pins this project to it.
 
-<Terminal cwd="~/work/api" caption="dvm use writes the .dvmrc you commit, and dart follows it from the next keystroke on.">
+<Terminal cwd="~/code/api" caption="dvm use writes the .dvmrc you commit, and dart follows it from the next keystroke on.">
 
 ```text
 $ dvm install 3.13.2
@@ -49,10 +49,10 @@ Downloading Dart 3.13.2 (macos-arm64, stable)
   dartsdk-macos-arm64-release.zip  100%  (215.4 / 215.4 MB)
 Installed Dart 3.13.2 to /Users/you/.dvm/versions/3.13.2
 $ dvm use 3.13.2
-Pinned Dart 3.13.2 for /Users/you/work/api.
-  /Users/you/work/api/.dvmrc -> commit this
-  /Users/you/work/api/.dvm/dart_sdk -> /Users/you/.dvm/versions/3.13.2 (for your IDE; do not commit it)
-`.dvm/` is not ignored yet by /Users/you/work/api/.gitignore. Add it with: dvm use 3.13.2 --gitignore
+Pinned Dart 3.13.2 for /Users/you/code/api.
+  /Users/you/code/api/.dvmrc -> commit this
+  /Users/you/code/api/.dvm/dart_sdk -> /Users/you/.dvm/versions/3.13.2 (for your IDE; do not commit it)
+`.dvm/` is not ignored yet by /Users/you/code/api/.gitignore. Add it with: dvm use 3.13.2 --gitignore
 $ dart --version
 Dart SDK version: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on "macos_arm64"
 ```
@@ -63,7 +63,7 @@ Dart SDK version: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on "macos_arm
 
 Here is the whole idea in one screen. Same shell, same `dart` — the directory is the only thing that changed.
 
-<Terminal cwd="~/work/api">
+<Terminal cwd="~/code/api">
 
 ```text
 $ dart --version
@@ -72,7 +72,7 @@ Dart SDK version: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on "macos_arm
 
 </Terminal>
 
-<Terminal cwd="~/work/legacy">
+<Terminal cwd="~/code/legacy">
 
 ```text
 $ dart --version
@@ -83,13 +83,13 @@ Dart SDK version: 3.5.4 (stable) (Wed Oct 16 16:18:51 2024 +0000) on "macos_arm6
 
 "Which Dart am I running?" is now a property of the directory you are standing in, and [`dvm which`](/commands/which) shows the whole answer: the SDK, the version, and which of the [five rules](/versions/resolution-order) chose it.
 
-<Terminal cwd="~/work/legacy" caption="Rule 2 is the committed pin. dvm names the rule and the file, so the answer is always checkable.">
+<Terminal cwd="~/code/legacy" caption="Rule 2 is the committed pin. dvm names the rule and the file, so the answer is always checkable.">
 
 ```text
 $ dvm which
 /Users/you/.dvm/versions/3.5.4/bin/dart
 Dart 3.5.4
-Chosen by rule 2 of 5: pinned by /Users/you/work/legacy/.dvmrc.
+Chosen by rule 2 of 5: pinned by /Users/you/code/legacy/.dvmrc.
 SDK: /Users/you/.dvm/versions/3.5.4
 ```
 
@@ -101,7 +101,7 @@ Every tool that spawns `dart` behind your back goes through the same [shim](/get
 
 **Cloning a project that already pins its SDK.** The [`.dvmrc`](/versions/dvmrc) is in the repository, so the right SDK is chosen the moment you `cd` in.
 
-<Terminal cwd="~/work/cloned" caption="The pin arrived with the clone, and dart followed it.">
+<Terminal cwd="~/code/cloned" caption="The pin arrived with the clone, and dart followed it.">
 
 ```text
 $ cat .dvmrc
@@ -116,7 +116,7 @@ Dart SDK version: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on "macos_arm
 
 **Seeing what is on the machine.** [`dvm list`](/commands/list) marks what this directory resolves to with a `*`, and tags each SDK with everything that points at it.
 
-<Terminal cwd="~/work/legacy" caption="One cache, shared by every project. Two projects on the same version cost one download.">
+<Terminal cwd="~/code/legacy" caption="One cache, shared by every project. Two projects on the same version cost one download.">
 
 ```text
 $ dvm list
@@ -125,14 +125,14 @@ Installed Dart SDKs in /Users/you/.dvm/versions:
   3.13.2  global default, channel: stable
 * 3.5.4   this project, alias: work
 
-* = what /Users/you/work/legacy resolves to right now: pinned by /Users/you/work/legacy/.dvmrc via "work".
+* = what /Users/you/code/legacy resolves to right now: pinned by /Users/you/code/legacy/.dvmrc via "work".
 ```
 
 </Terminal>
 
 **Giving a version a name you will remember.** An [alias](/versions/aliases) lets a `.dvmrc` say `work` where a team has settled on one SDK, and dvm reports the hop it made.
 
-<Terminal cwd="~/work/legacy" caption="dvm which follows the alias and says where the name is defined.">
+<Terminal cwd="~/code/legacy" caption="dvm which follows the alias and says where the name is defined.">
 
 ```text
 $ dvm alias work 3.5.4
@@ -141,7 +141,7 @@ $ dvm alias work 3.5.4
 $ dvm which
 /Users/you/.dvm/versions/3.5.4/bin/dart
 Dart 3.5.4
-Chosen by rule 2 of 5: pinned by /Users/you/work/legacy/.dvmrc.
+Chosen by rule 2 of 5: pinned by /Users/you/code/legacy/.dvmrc.
   It says "work", an alias for 3.5.4 in /Users/you/.dvm/config.json.
 SDK: /Users/you/.dvm/versions/3.5.4
 ```
@@ -150,7 +150,7 @@ SDK: /Users/you/.dvm/versions/3.5.4
 
 **Building it on CI.** A build machine writes every command itself, so [`dvm exec`](/commands/exec) is all it needs: it runs the same resolution and hands the command straight to the pinned SDK. See [Using dvm in CI](/guides/ci).
 
-<Terminal cwd="~/work/api" caption="The build tests against the SDK the repository pins.">
+<Terminal cwd="~/code/api" caption="The build tests against the SDK the repository pins.">
 
 ```text
 $ dvm exec dart --version
