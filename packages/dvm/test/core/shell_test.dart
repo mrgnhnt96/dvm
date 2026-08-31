@@ -1,4 +1,5 @@
 import 'package:dvm/dvm.dart';
+import 'package:dvm/src/core/path_line.dart';
 import 'package:dvm/src/core/shell.dart';
 import 'package:file/memory.dart';
 import 'package:test/test.dart';
@@ -35,6 +36,65 @@ void main() {
       expect(facts.shellPath, isNull);
       expect(facts.kind, ShellKind.posix);
       expect(facts.primaryRcFile?.path, '/home/dev/.profile');
+    });
+
+    test('an unset SHELL is a GUESS, not an answer', () {
+      final facts = factsFor(const {});
+
+      expect(facts.kind, ShellKind.posix);
+      expect(facts.kindIsAssumed, isTrue);
+    });
+
+    test('an unrecognised SHELL is a guess too', () {
+      final facts = factsFor({'SHELL': '/usr/local/bin/nu'});
+
+      expect(facts.kind, ShellKind.posix);
+      expect(facts.kindIsAssumed, isTrue);
+    });
+
+    test('a SHELL that names a real POSIX shell is NOT a guess', () {
+      // `.profile` is genuinely what these read. Nagging the user whose setup
+      // is right is the other way to get this wrong.
+      for (final path in const ['/bin/sh', '/bin/dash', '/bin/ksh']) {
+        final facts = factsFor({'SHELL': path});
+        expect(facts.kind, ShellKind.posix, reason: path);
+        expect(facts.kindIsAssumed, isFalse, reason: path);
+      }
+    });
+
+    test('a guessed shell plus another shell\'s rc file is an ambiguity', () {
+      writeRc('/home/dev/.zshrc', 'export EDITOR=vim\n');
+      final facts = factsFor(const {});
+
+      expect(facts.primaryRcFile?.path, '/home/dev/.profile');
+      expect(facts.rcFileIsGuessed, isTrue);
+      expect(
+        facts.otherShellRcFiles.map((other) => other.file.path),
+        ['/home/dev/.zshrc'],
+      );
+      expect(facts.otherShellRcFiles.single.shell, ShellKind.zsh);
+    });
+
+    test('a guessed shell with an empty home is NOT an ambiguity', () {
+      // The ordinary CI case. There is no startup file at all, so `.profile`
+      // is as good an answer as any and there is nothing to warn about.
+      expect(factsFor(const {}).rcFileIsGuessed, isFalse);
+    });
+
+    test('a KNOWN shell is never an ambiguity, whatever else is lying around',
+        () {
+      // The ordinary developer case: $SHELL said zsh, and a stale .bashrc is
+      // none of dvm's business.
+      writeRc('/home/dev/.bashrc', 'export EDITOR=vim\n');
+      writeRc('/home/dev/.profile', 'export EDITOR=vim\n');
+      final facts = factsFor({'SHELL': '/bin/zsh'});
+
+      expect(facts.rcFileIsGuessed, isFalse);
+      expect(facts.primaryRcFile?.path, '/home/dev/.zshrc');
+    });
+
+    test('only rc files that EXIST count as evidence', () {
+      expect(factsFor(const {}).otherShellRcFiles, isEmpty);
     });
 
     test('has no rc file to name without a home directory', () {
@@ -218,6 +278,49 @@ void main() {
       );
 
       expect(factsFor({'SHELL': '/bin/zsh'}).scanForShadows().isClean, isTrue);
+    });
+
+    test('finds the PATH line, in whichever file it is, when asked to', () {
+      writeRc(
+          '/home/dev/.profile',
+          '# >>> dvm >>>\n'
+              'export PATH="/home/dev/.dvm/shims:\$PATH"\n'
+              '# <<< dvm <<<\n');
+      final scan = factsFor({'SHELL': '/bin/zsh'}).scanForShadows(
+        shimsLine: ShimsPathLine(
+          shimsPath: '/home/dev/.dvm/shims',
+          homePath: '/home/dev',
+        ),
+      );
+
+      expect(scan.pathLines, hasLength(1));
+      expect(scan.pathLines.single.file.path, '/home/dev/.profile');
+      expect(scan.pathLines.single.line, 2);
+      expect(scan.pathLines.single.describe(), '/home/dev/.profile:2');
+    });
+
+    test('finds a hand-written PATH line spelled with \$HOME', () {
+      writeRc(
+          '/home/dev/.zprofile',
+          r'export PATH="$HOME/.dvm/shims:$PATH"'
+              '\n');
+      final scan = factsFor({'SHELL': '/bin/zsh'}).scanForShadows(
+        shimsLine: ShimsPathLine(
+          shimsPath: '/home/dev/.dvm/shims',
+          homePath: '/home/dev',
+        ),
+      );
+
+      expect(scan.pathLines.single.file.path, '/home/dev/.zprofile');
+    });
+
+    test('reports no PATH lines when it was given nothing to match', () {
+      writeRc(
+          '/home/dev/.profile',
+          r'export PATH="/home/dev/.dvm/shims:$PATH"'
+              '\n');
+
+      expect(factsFor(const {}).scanForShadows().pathLines, isEmpty);
     });
 
     test('says nothing about a machine with clean startup files', () {

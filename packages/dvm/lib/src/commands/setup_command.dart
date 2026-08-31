@@ -94,8 +94,8 @@ class SetupCommand extends Command<int> {
     final shim = await writer.write(binary.path);
 
     context.out
-      ..writeln('Wrote ${context.display(shim.path)}')
-      ..writeln('  -> ${context.display(binary.path)} exec dart')
+      ..writeln('Wrote ${shim.path}')
+      ..writeln('  -> ${binary.path} exec dart')
       ..writeln();
 
     final shell = _shell();
@@ -149,7 +149,7 @@ class SetupCommand extends Command<int> {
       final file = context.fileSystem.file(_absolute(override));
       if (!file.existsSync()) {
         throw ConfigException(
-          '--dvm-path names ${context.display(file.path)}, which does not '
+          '--dvm-path names ${file.path}, which does not '
           'exist.',
         );
       }
@@ -221,8 +221,8 @@ class SetupCommand extends Command<int> {
     context.out
       ..writeln()
       ..writeln('That line puts the shims on PATH, not `dvm` itself. The dvm '
-          'running now is ${context.display(binary.path)}, which is not '
-          '${context.display(context.paths.binDir.path)}, so dvm cannot tell '
+          'running now is ${binary.path}, which is not '
+          '${context.paths.binDir.path}, so dvm cannot tell '
           'whether that directory is an install worth adding — a guess would '
           'go into your startup file permanently.')
       ..writeln('If you want the `dvm` command on PATH from there, add it '
@@ -273,8 +273,7 @@ class SetupCommand extends Command<int> {
       // PROSE about directories, so it is formatted for reading — the same
       // call [PathLineOutcome.alreadyPresent] makes just below. The PATH line
       // itself is built from `directory.path` and never from this.
-      final names =
-          directories.map((directory) => context.display(directory.path));
+      final names = directories.map((directory) => directory.path);
       context.out.writeln(
         directories.length == 1
             ? '${names.single} is already on your PATH, so there is nothing '
@@ -301,11 +300,11 @@ class SetupCommand extends Command<int> {
         ..writeln()
         ..writeln('For the terminal you are in right now:')
         ..writeln()
-        // ABSOLUTE, deliberately: this is a PATH value the user pastes into
-        // a shell, not prose about a file. A relative entry on PATH is
-        // resolved against whatever directory each process happens to be in.
-        // That is why [session] is built from `directory.path` and never from
-        // `context.display`, however many directories it covers.
+        // ABSOLUTE, like every path this command prints: a relative entry on
+        // PATH is resolved against whatever directory each process happens to
+        // be in. See the note on [DvmContext.display] — `setup` names PATH
+        // entries, startup files and the dvm home, and none of those may be
+        // rendered relative to the working directory.
         ..writeln("  \$env:Path = '$session;' + \$env:Path");
       _explainOmittedBinDir(directories, binary);
       return;
@@ -322,9 +321,20 @@ class SetupCommand extends Command<int> {
       return;
     }
 
+    // Naming ONE file here is only honest when dvm knows the shell. When it
+    // does not, and the home directory holds another shell's startup files,
+    // saying "add this to ~/.profile" is the same wrong instruction
+    // `--write-path-line` used to carry out — printed instead of written, and
+    // just as certain to change nothing.
+    if (shell.rcFileIsGuessed) {
+      _printAmbiguousRcFile(shell, rcFile, line);
+      _explainOmittedBinDir(directories, binary);
+      return;
+    }
+
     final verb = rcFile.existsSync() ? 'Add this line to' : 'Create';
     context.out
-      ..writeln('$verb ${context.display(rcFile.path)} '
+      ..writeln('$verb ${rcFile.path} '
           '(${shell.shellPath ?? 'no \$SHELL set, assuming ${shell.kind.token}'}):')
       ..writeln()
       ..writeln('  $line')
@@ -353,7 +363,7 @@ class SetupCommand extends Command<int> {
 
     context.out
       ..writeln('Or let dvm add it for you: dvm setup --write-path-line')
-      ..writeln('It backs ${context.display(rcFile.path)} up before touching '
+      ..writeln('It backs ${rcFile.path} up before touching '
           'it, and '
           'dvm setup --remove-path-line takes the line back out.');
     _explainOmittedBinDir(directories, binary);
@@ -374,7 +384,7 @@ class SetupCommand extends Command<int> {
     File binary, {
     required bool blocked,
   }) {
-    final editor = _editorFor(shell, directories);
+    final editor = _editorFor(shell, directories, guardGuessedRcFile: true);
     if (editor == null) return false;
 
     if (blocked) {
@@ -391,23 +401,23 @@ class SetupCommand extends Command<int> {
     switch (result.outcome) {
       case PathLineOutcome.alreadyPresent:
         context.out.writeln(
-          '${context.display(editor.rcFile.path)} already puts '
-          '${context.display(context.paths.shimsDir.path)} on PATH '
+          '${editor.rcFile.path} already puts '
+          '${context.paths.shimsDir.path} on PATH '
           '(line ${result.line}), so there is nothing to add.',
         );
+        _reportPathLineNotInEffect(shell, editor.rcFile);
       case PathLineOutcome.created:
         context.out
-          ..writeln('Created ${context.display(editor.rcFile.path)} with:')
+          ..writeln('Created ${editor.rcFile.path} with:')
           ..writeln()
           ..writeln('  ${editor.line}');
         _explainNextShell(editor);
         _explainOmittedBinDir(directories, binary);
       case PathLineOutcome.written:
         context.out
-          ..writeln('Backed up ${context.display(editor.rcFile.path)} '
-              '-> ${context.display(result.backup!.path)}')
-          ..writeln(
-              'Added this line to ${context.display(editor.rcFile.path)}:')
+          ..writeln('Backed up ${editor.rcFile.path} '
+              '-> ${result.backup!.path}')
+          ..writeln('Added this line to ${editor.rcFile.path}:')
           ..writeln()
           ..writeln('  ${editor.line}');
         _explainNextShell(editor);
@@ -420,11 +430,127 @@ class SetupCommand extends Command<int> {
     return true;
   }
 
+  /// Prints the line without naming a file, when dvm cannot tell which file it
+  /// belongs in.
+  ///
+  /// The line itself is still the answer and is still printed — the user knows
+  /// which shell they are in, which is the one fact dvm is missing. What is
+  /// withheld is the confident file name and the offer of
+  /// `--write-path-line`, which would decline in this state anyway.
+  void _printAmbiguousRcFile(ShellFacts shell, File rcFile, String line) {
+    final said = shell.shellPath;
+    context.out
+      ..writeln(said == null
+          ? '\$SHELL is not set, so dvm cannot tell which startup file your '
+              'shell reads.'
+          : '\$SHELL says $said, which dvm does not recognise, so it cannot '
+              'tell which startup file your shell reads.')
+      ..writeln('These are here, and they belong to different shells:')
+      ..writeln()
+      ..writeln('  ${rcFile.path}  (${shell.kind.token}, what dvm would have '
+          'assumed)');
+    for (final other in shell.otherShellRcFiles) {
+      context.out.writeln('  ${other.file.path}  (${other.shell.token})');
+    }
+    context.out
+      ..writeln()
+      ..writeln('Add this line to the one your shell actually reads:')
+      ..writeln()
+      ..writeln('  $line')
+      ..writeln()
+      ..writeln('It has to go ahead of anything else that puts a dart on PATH, '
+          'and it only takes effect in shells started after you save the file.')
+      ..writeln()
+      ..writeln('Or name your shell and let dvm do it: '
+          'SHELL=<your shell> dvm setup --write-path-line');
+  }
+
+  /// Refuses to write, because the file dvm would write to is a guess the home
+  /// directory contradicts.
+  ///
+  /// Refusing rather than writing-and-warning, and the difference matters. The
+  /// artifact this bug leaves behind — a PATH line in a `.profile` nothing
+  /// reads, plus a backup file beside it — is indistinguishable from a working
+  /// one, and the NEXT run finds it and reports "there is nothing to add". So
+  /// the machine is left clean and the user is left with one decision, spelled
+  /// out as one command.
+  void _refuseGuessedRcFile(
+    ShellFacts shell,
+    File rcFile,
+    List<Directory> directories,
+  ) {
+    final said = shell.shellPath;
+    final others = shell.otherShellRcFiles;
+    // The first one is the best suggestion: [ShellFacts] lists a shell's
+    // primary file first, so this is `.zshrc` rather than `.zlogin`.
+    final suggestion = others.first.shell;
+
+    context.err
+      ..writeln('Not writing the PATH line: dvm cannot tell which startup file '
+          'your shell reads.')
+      ..writeln()
+      ..writeln(said == null
+          ? '\$SHELL is not set, so dvm assumed ${shell.kind.token} and would '
+              'have written to ${rcFile.path}.'
+          : '\$SHELL says $said, which dvm does not recognise, so it assumed '
+              '${shell.kind.token} and would have written to ${rcFile.path}.')
+      ..writeln('But these startup files are here too, and they belong to a '
+          'shell that does not read it:')
+      ..writeln();
+    for (final other in others) {
+      context.err.writeln('  ${other.file.path}  (${other.shell.token})');
+    }
+    context.err
+      ..writeln()
+      ..writeln('Writing to ${rcFile.path} would look like it worked and put '
+          'nothing on your PATH.')
+      ..writeln()
+      ..writeln('Name your shell and run this again:')
+      ..writeln()
+      ..writeln('  SHELL=${suggestion.token} dvm setup --write-path-line')
+      ..writeln()
+      ..writeln('Or add this line to the startup file you actually use:')
+      ..writeln()
+      ..writeln('  ${shell.pathLine(directories)}');
+  }
+
+  /// Says so when a PATH line that is already in the file is not in effect.
+  ///
+  /// This is the check that makes `setup` and `doctor` agree. `install()`
+  /// answers a question about FILE CONTENTS — is the line in this file? — and
+  /// on its own that is what turned a line in a `.profile` zsh never sources
+  /// into a confident "there is nothing to add". Whether the directory is
+  /// actually on PATH is a question about the ENVIRONMENT, and it is the one
+  /// `doctor` is about to fail on.
+  ///
+  /// Deliberately honest about the two readings rather than picking one: dvm
+  /// cannot tell "you have not opened a new shell yet" from "your shell does
+  /// not read that file", and the second is only a likelihood, not a fact. Both
+  /// are named, and the startup files belonging to another shell are listed
+  /// when there are any, because that is the evidence pointing at the second.
+  void _reportPathLineNotInEffect(ShellFacts shell, File rcFile) {
+    final shims = context.paths.shimsDir;
+    if (shell.isOnPath(shims)) return;
+
+    context.err
+      ..writeln()
+      ..writeln('WARNING: that line is not in effect. ${shims.path} is not on '
+          'the PATH of this shell, so `dart` does not go through dvm right now '
+          'and `dvm doctor` reports it as a problem.')
+      ..writeln('Either no new shell has been started since that line was '
+          'added, or your shell does not read ${rcFile.path}.');
+    for (final other in shell.otherShellRcFiles) {
+      context.err.writeln('  ${other.file.path} is here too, and '
+          '${other.shell.token} does not read ${rcFile.path}.');
+    }
+    context.err.writeln('Check with: dvm doctor');
+  }
+
   void _explainNextShell(PathLineEditor editor) {
     context.out
       ..writeln()
       ..writeln('It takes effect in shells started after this. For the one '
-          'you are in: source ${context.display(editor.rcFile.path)}')
+          'you are in: source ${editor.rcFile.path}')
       ..writeln('Undo it with: dvm setup --remove-path-line');
   }
 
@@ -442,27 +568,27 @@ class SetupCommand extends Command<int> {
     switch (result.outcome) {
       case PathLineOutcome.removed:
         context.out
-          ..writeln('Backed up ${context.display(editor.rcFile.path)} '
-              '-> ${context.display(result.backup!.path)}')
+          ..writeln('Backed up ${editor.rcFile.path} '
+              '-> ${result.backup!.path}')
           ..writeln('Removed dvm\'s PATH line from '
-              '${context.display(editor.rcFile.path)}.')
+              '${editor.rcFile.path}.')
           ..writeln('Shells started after this will no longer find the shims. '
               'The shims themselves are still in '
-              '${context.display(context.paths.shimsDir.path)}.');
+              '${context.paths.shimsDir.path}.');
       case PathLineOutcome.foreign:
         // Reported rather than removed, and still a success: the file is in
         // the state the user put it in, and the one thing dvm knows for sure
         // is that it did not write this line.
         context.out
-          ..writeln('${context.display(editor.rcFile.path)} puts '
-              '${context.display(context.paths.shimsDir.path)} on PATH at '
+          ..writeln('${editor.rcFile.path} puts '
+              '${context.paths.shimsDir.path} on PATH at '
               'line ${result.line}, but dvm did not write that line — there '
               'are no dvm markers around it — so it has been left as it is.')
           ..writeln('Remove it by hand if you want it gone.');
       case PathLineOutcome.absent:
         context.out.writeln(
           'There is no dvm PATH line in '
-          '${context.display(editor.rcFile.path)}, '
+          '${editor.rcFile.path}, '
           'so there is nothing to remove.',
         );
       case PathLineOutcome.written:
@@ -475,7 +601,16 @@ class SetupCommand extends Command<int> {
 
   /// An editor for the shell's startup file, or null once it has said why
   /// there is no file to edit.
-  PathLineEditor? _editorFor(ShellFacts shell, List<Directory> directories) {
+  ///
+  /// [guardGuessedRcFile] is for the callers that WRITE. `--remove-path-line`
+  /// passes false on purpose: the file it undoes is the one an earlier dvm
+  /// picked, and a guard that refuses to clean up the mess it is guarding
+  /// against would strand every user who already has one.
+  PathLineEditor? _editorFor(
+    ShellFacts shell,
+    List<Directory> directories, {
+    bool guardGuessedRcFile = false,
+  }) {
     if (shell.kind == ShellKind.powershell) {
       context.err
         ..writeln('PowerShell takes PATH from your environment rather than '
@@ -496,6 +631,11 @@ class SetupCommand extends Command<int> {
             'which startup file is yours. Add this line to it yourself:')
         ..writeln()
         ..writeln('  ${shell.pathLine(directories)}');
+      return null;
+    }
+
+    if (guardGuessedRcFile && shell.rcFileIsGuessed) {
+      _refuseGuessedRcFile(shell, rcFile, directories);
       return null;
     }
 
@@ -554,13 +694,13 @@ class SetupCommand extends Command<int> {
       context.err
         ..writeln()
         ..writeln('WARNING: an older dvm (cbracken/dvm) shares '
-            '${context.display(context.paths.home.path)}:');
+            '${context.paths.home.path}:');
       if (legacy.script case final script?) {
-        context.err.writeln('  ${context.display(script.path)}  '
+        context.err.writeln('  ${script.path}  '
             '(the shell function it defines)');
       }
       for (final directory in legacy.directories) {
-        context.err.writeln('  ${context.display(directory.path)}');
+        context.err.writeln('  ${directory.path}');
       }
       context.err.writeln('Import its SDKs with: dvm migrate');
     }

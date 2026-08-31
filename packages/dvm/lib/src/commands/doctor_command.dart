@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 
 import '../core/context.dart';
 import '../core/exceptions.dart';
+import '../core/path_line.dart';
 import '../core/shell.dart';
 import '../core/shims.dart';
 import 'version_ref.dart';
@@ -170,7 +171,7 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'PATH',
-          summary: '${context.display(shims.path)} is not on PATH, so '
+          summary: '${shims.path} is not on PATH, so '
               '`dart` does not go through dvm.',
           details: order(),
           remedy: '${shell.pathLineAction}: $line',
@@ -184,7 +185,7 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'PATH',
-          summary: '${context.display(shims.path)} is on PATH but '
+          summary: '${shims.path} is on PATH but '
               '${ahead.length == 1 ? 'an entry ahead of it provides' : '${ahead.length} entries ahead of it provide'} '
               'a dart, so the shim is never reached.',
           details: order(),
@@ -197,7 +198,7 @@ class DoctorCommand extends Command<int> {
       DoctorFinding(
         severity: DoctorSeverity.ok,
         area: 'PATH',
-        summary: '${context.display(shims.path)} is on PATH ahead of every '
+        summary: '${shims.path} is on PATH ahead of every '
             'other dart.',
         details: providers.isEmpty ? const [] : order(),
       ),
@@ -217,7 +218,7 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'shims',
-          summary: '${context.display(shim.path)} does not exist.',
+          summary: '${shim.path} does not exist.',
           remedy: 'Run: dvm setup',
         ),
       ];
@@ -233,7 +234,7 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'shims',
-          summary: '${context.display(shim.path)} exists but could not be read '
+          summary: '${shim.path} exists but could not be read '
               '(${error.message}), so dvm cannot say what it runs.',
           remedy: 'Check its permissions, then run: dvm setup',
         ),
@@ -245,7 +246,7 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'shims',
-          summary: '${context.display(shim.path)} is not recognisable as a '
+          summary: '${shim.path} is not recognisable as a '
               'dvm shim.',
           remedy: 'Overwrite it with: dvm setup',
         ),
@@ -258,8 +259,8 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'shims',
-          summary: '${context.display(shim.path)} runs '
-              '${context.display(target)}, which no longer exists.',
+          summary: '${shim.path} runs '
+              '$target, which no longer exists.',
           details: const [
             'Every `dart` on this machine fails until this is fixed.',
           ],
@@ -275,8 +276,8 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'shims',
-          summary: '${context.display(shim.path)} is not executable.',
-          remedy: 'chmod 755 ${context.display(shim.path)}  '
+          summary: '${shim.path} is not executable.',
+          remedy: 'chmod 755 ${shim.path}  '
               '(or run: dvm setup)',
         ),
       );
@@ -287,8 +288,8 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.ok,
           area: 'shims',
-          summary: '${context.display(shim.path)} runs '
-              '${context.display(target)}.',
+          summary: '${shim.path} runs '
+              '$target.',
         ),
       );
     }
@@ -297,9 +298,16 @@ class DoctorCommand extends Command<int> {
 
   /// Is something in the user's shell going to win over the dvm binary?
   List<DoctorFinding> _checkShell(ShellFacts shell) {
-    final scan = shell.scanForShadows();
+    final scan = shell.scanForShadows(
+      shimsLine: ShimsPathLine(
+        shimsPath: context.paths.shimsDir.path,
+        homePath: shell.home?.path,
+      ),
+    );
     final legacy = LegacyDvmInstall.detect(context.paths);
     final findings = <DoctorFinding>[];
+
+    findings.addAll(_checkMisfiledPathLine(shell, scan));
 
     if (scan.shadows.isEmpty) {
       findings.add(
@@ -345,13 +353,12 @@ class DoctorCommand extends Command<int> {
           severity: DoctorSeverity.warn,
           area: 'shell',
           summary: 'an older dvm (cbracken/dvm) shares '
-              '${context.display(context.paths.home.path)}.',
+              '${context.paths.home.path}.',
           details: [
             if (legacy.script case final script?)
-              '${context.display(script.path)}  '
+              '${script.path}  '
                   '(sourcing this is what defines the function)',
-            for (final directory in legacy.directories)
-              context.display(directory.path),
+            for (final directory in legacy.directories) directory.path,
           ],
           remedy: 'Import its SDKs with: dvm migrate',
         ),
@@ -359,6 +366,56 @@ class DoctorCommand extends Command<int> {
     }
 
     return findings;
+  }
+
+  /// A startup file that puts the shims on PATH, while the live PATH does not
+  /// have them.
+  ///
+  /// The precise shape of this leaf's bug, and the reason it survived two
+  /// rounds of debugging: the line is real, it is in a real file, `setup` found
+  /// it and said "there is nothing to add" — and the shell that ran `setup`
+  /// never sources that file, so it has never once taken effect. The PATH check
+  /// above already FAILs; this is the sentence that says WHY, and names the
+  /// file to look at.
+  ///
+  /// A [DoctorSeverity.warn] rather than a second failure. It explains a
+  /// failure that has already been counted, and counting it twice would turn
+  /// one problem into "2 problems" on a machine with one.
+  ///
+  /// Both readings are stated because dvm cannot distinguish them: a line added
+  /// moments ago in this same shell is also "in a file, not on PATH". What
+  /// makes the second reading the likely one is [ShellFacts.otherShellRcFiles],
+  /// which is listed when it is not empty.
+  List<DoctorFinding> _checkMisfiledPathLine(ShellFacts shell, ShellScan scan) {
+    final shims = context.paths.shimsDir;
+    if (scan.pathLines.isEmpty) return const [];
+    if (shell.isOnPath(shims)) return const [];
+
+    final others = shell.otherShellRcFiles;
+    return [
+      DoctorFinding(
+        severity: DoctorSeverity.warn,
+        area: 'shell',
+        summary: '${shims.path} is put on PATH by a startup file, but it is '
+            'not on the PATH of this shell — so that line has never taken '
+            'effect here.',
+        details: [
+          for (final line in scan.pathLines) '${line.describe()}: ${line.text}',
+          'Either no new shell has been started since it was added, or the '
+              'shell you are in does not read that file.',
+          for (final other in others)
+            '${other.file.path} is here too, so ${other.shell.token} is in '
+                'use on this machine — and it reads its own startup files, '
+                'not the one above.',
+        ],
+        remedy: others.isEmpty
+            ? 'Start a new shell. If it is still missing, the file above is '
+                'not one your shell reads — move the line into the one it '
+                'does.'
+            : 'Move the line into the startup file your shell actually reads, '
+                'or re-run: SHELL=<your shell> dvm setup --write-path-line',
+      ),
+    ];
   }
 
   /// Is `~/.dvm/config.json` readable, and does its global still exist?
@@ -369,7 +426,7 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.ok,
           area: 'config',
-          summary: 'no ${context.display(file.path)} yet, which is the '
+          summary: 'no ${file.path} yet, which is the '
               'normal state before a '
               'global default is set.',
         ),
@@ -385,7 +442,7 @@ class DoctorCommand extends Command<int> {
           severity: DoctorSeverity.fail,
           area: 'config',
           summary: error.message,
-          remedy: 'Fix ${context.display(file.path)}, or delete it to start '
+          remedy: 'Fix ${file.path}, or delete it to start '
               'over.',
         ),
       ];
@@ -396,7 +453,7 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.ok,
           area: 'config',
-          summary: '${context.display(file.path)} is valid; no global '
+          summary: '${file.path} is valid; no global '
               'default is set.',
         ),
       ];
@@ -429,7 +486,7 @@ class DoctorCommand extends Command<int> {
               'installed.',
           details: [
             'Nothing is at '
-                '${context.display(context.paths.versionDir(ref.version).path)}',
+                '${context.paths.versionDir(ref.version).path}',
             'Every directory without a .dvmrc fails until this is fixed.',
           ],
           remedy: 'dvm install ${ref.version}  (or: dvm global <version>)',
@@ -441,7 +498,7 @@ class DoctorCommand extends Command<int> {
       DoctorFinding(
         severity: DoctorSeverity.ok,
         area: 'config',
-        summary: '${context.display(file.path)} is valid; the global '
+        summary: '${file.path} is valid; the global '
             'default Dart '
             '${ref.version} is installed.',
       ),
@@ -557,7 +614,7 @@ class DoctorCommand extends Command<int> {
           severity: DoctorSeverity.fail,
           area: 'project',
           summary: '${context.display(link.path)} is a stale symlink: it '
-              'points at ${context.display(target)}, which has been removed.',
+              'points at $target, which has been removed.',
           details: const [
             'An IDE following it will report a broken or missing SDK.',
           ],
@@ -576,9 +633,9 @@ class DoctorCommand extends Command<int> {
             severity: DoctorSeverity.warn,
             area: 'project',
             summary: '${context.display(link.path)} points at '
-                '${context.display(target)}, but this project pins '
+                '$target, but this project pins '
                 'Dart $version.',
-            details: ['Expected it to point at ${context.display(expected)}'],
+            details: ['Expected it to point at $expected'],
             remedy: 'Re-point it: dvm use $version',
           ),
         ];
@@ -590,7 +647,7 @@ class DoctorCommand extends Command<int> {
         severity: DoctorSeverity.ok,
         area: 'project',
         summary: '${context.display(link.path)} points at '
-            '${context.display(target)}.',
+            '$target.',
       ),
     ];
   }

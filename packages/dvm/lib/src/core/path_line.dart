@@ -42,6 +42,62 @@ class PathLineResult {
   final int? line;
 }
 
+/// Recognises a line that puts the shims directory on PATH, however it is
+/// spelled.
+///
+/// Pulled out of [PathLineEditor] because two callers need the same answer and
+/// a second spelling of it is the kind of bug that only shows up on somebody
+/// else's machine: the editor asks "is the line already in the file I am about
+/// to write?", and `doctor` asks "is the line in a file — any file — while the
+/// live PATH lacks the directory?". A line recognised by one and missed by the
+/// other is exactly how a misfiled line goes unreported.
+class ShimsPathLine {
+  ShimsPathLine({required this.shimsPath, required this.homePath});
+
+  /// The shims directory, as dvm spells it.
+  final String shimsPath;
+
+  /// The user's home, so a hand-written line spelled `$HOME/...` or `~/...`
+  /// is recognised as the same line.
+  final String? homePath;
+
+  /// Whether [raw] is an instruction putting [shimsPath] on PATH.
+  ///
+  /// Matched by substring rather than equality: the user may have typed the
+  /// same instruction with different quoting, spacing, or `$HOME` in place of
+  /// their home directory, and appending a second copy of a line that is
+  /// already working is exactly the failure this is here to prevent.
+  bool matches(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty || text.startsWith('#')) return false;
+    if (!_needles.any(text.contains)) return false;
+    // `export PATH=`, `set -gx PATH`, `fish_add_path` — every spelling of the
+    // instruction names PATH, and a line that merely mentions the directory
+    // (a comment's worth of prose, a `ls` in a script) does not.
+    return text.toLowerCase().contains('path');
+  }
+
+  /// The index of the first line in [lines] that [matches], or null.
+  int? indexIn(List<String> lines) {
+    for (var index = 0; index < lines.length; index++) {
+      if (matches(lines[index])) return index;
+    }
+    return null;
+  }
+
+  late final List<String> _needles = _buildNeedles();
+
+  List<String> _buildNeedles() {
+    final needles = <String>[shimsPath];
+    final home = homePath;
+    if (home != null && home.isNotEmpty && shimsPath.startsWith('$home/')) {
+      final rest = shimsPath.substring(home.length + 1);
+      needles.addAll([r'$HOME/' '$rest', r'${HOME}/' '$rest', '~/$rest']);
+    }
+    return needles;
+  }
+}
+
 /// Adds and removes dvm's PATH line in a shell startup file.
 ///
 /// Everything dvm writes goes between [beginMarker] and [endMarker]. That is
@@ -77,6 +133,11 @@ class PathLineEditor {
   final String? homePath;
 
   final DateTime Function() _now;
+
+  /// How a line that is already there is recognised. Shared with `doctor`, so
+  /// that a line one of them sees is a line the other sees too.
+  late final ShimsPathLine matcher =
+      ShimsPathLine(shimsPath: shimsPath, homePath: homePath);
 
   static const String beginMarker = '# >>> dvm >>>';
   static const String endMarker = '# <<< dvm <<<';
@@ -175,37 +236,5 @@ class PathLineEditor {
 
   /// The index of a line that already puts the shims directory on PATH, or
   /// null.
-  ///
-  /// Matched by substring rather than equality: the user may have typed the
-  /// same instruction with different quoting, spacing, or `$HOME` in place of
-  /// their home directory, and appending a second copy of a line that is
-  /// already working is exactly the failure this is here to prevent.
-  int? _findExisting(List<String> lines) {
-    for (var index = 0; index < lines.length; index++) {
-      if (_mentionsShims(lines[index])) return index;
-    }
-    return null;
-  }
-
-  bool _mentionsShims(String raw) {
-    final text = raw.trim();
-    if (text.isEmpty || text.startsWith('#')) return false;
-    if (!_needles.any(text.contains)) return false;
-    // `export PATH=`, `set -gx PATH`, `fish_add_path` — every spelling of the
-    // instruction names PATH, and a line that merely mentions the directory
-    // (a comment's worth of prose, a `ls` in a script) does not.
-    return text.toLowerCase().contains('path');
-  }
-
-  late final List<String> _needles = _buildNeedles();
-
-  List<String> _buildNeedles() {
-    final needles = <String>[shimsPath];
-    final home = homePath;
-    if (home != null && home.isNotEmpty && shimsPath.startsWith('$home/')) {
-      final rest = shimsPath.substring(home.length + 1);
-      needles.addAll([r'$HOME/' '$rest', r'${HOME}/' '$rest', '~/$rest']);
-    }
-    return needles;
-  }
+  int? _findExisting(List<String> lines) => matcher.indexIn(lines);
 }

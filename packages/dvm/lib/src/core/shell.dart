@@ -1,6 +1,7 @@
 import 'package:file/file.dart';
 import 'package:path/path.dart' as p;
 
+import 'path_line.dart';
 import 'paths.dart';
 
 /// The shell the user is in, as far as `$SHELL` can say.
@@ -68,6 +69,32 @@ class ShellShadow {
   String describe() => '${file.path}:$line: $text';
 }
 
+/// One line in a startup file that puts the shims directory on PATH.
+///
+/// Finding one is not by itself good news. A line in a file the running shell
+/// never sources has exactly the same text as a line that works, and the whole
+/// of this leaf's bug was a check that could not tell them apart. Whether it is
+/// IN EFFECT is a separate question, asked of the live `PATH`.
+class RcPathLine {
+  const RcPathLine({
+    required this.file,
+    required this.line,
+    required this.text,
+  });
+
+  /// The startup file the line is in.
+  final File file;
+
+  /// Its 1-based line number.
+  final int line;
+
+  /// The line itself, trimmed.
+  final String text;
+
+  /// `/home/dev/.profile:2`.
+  String describe() => '${file.path}:$line';
+}
+
 /// What a scan of the startup files found, including what it could not read.
 ///
 /// [unreadable] is separate from an empty [shadows] on purpose: "there is no
@@ -75,12 +102,22 @@ class ShellShadow {
 /// different answers, and reporting the second as the first is how a user ends
 /// up being told everything is fine while their shell runs a different dvm.
 class ShellScan {
-  const ShellScan({required this.shadows, required this.unreadable});
+  const ShellScan({
+    required this.shadows,
+    required this.unreadable,
+    this.pathLines = const [],
+  });
 
   final List<ShellShadow> shadows;
 
   /// Files that exist but could not be read, with the reason.
   final Map<String, String> unreadable;
+
+  /// Every startup file that claims to put the shims directory on PATH.
+  ///
+  /// Empty unless the scan was given something to match with — see
+  /// [ShellFacts.scanForShadows].
+  final List<RcPathLine> pathLines;
 
   bool get isClean => shadows.isEmpty && unreadable.isEmpty;
 }
@@ -145,32 +182,73 @@ class ShellFacts {
   }
 
   /// Which shell [shellPath] names, defaulting to [ShellKind.posix].
-  late final ShellKind kind = _detectKind();
+  ShellKind get kind => _detected.kind;
+
+  /// Whether [kind] was ASSUMED rather than read out of the environment.
+  ///
+  /// True when `$SHELL` is unset, or set to something whose basename matches no
+  /// shell dvm knows. In both cases [kind] is [ShellKind.posix] because that is
+  /// the safe default for *running* things — but it is not a fact about the
+  /// user's shell, and [primaryRcFile] treating it as one is what wrote a PATH
+  /// line into a `.profile` that zsh never reads.
+  ///
+  /// False when `$SHELL` explicitly names a shell, INCLUDING `/bin/sh`,
+  /// `/bin/dash` and `/bin/ksh`: those are genuine POSIX shells that genuinely
+  /// read `.profile`, and treating a correct answer as a guess would nag a user
+  /// whose setup is right.
+  ///
+  /// Also false on Windows with no `$SHELL`, where the absence IS the answer —
+  /// see [ShellKind.powershell].
+  bool get kindIsAssumed => _detected.assumed;
+
+  late final ({ShellKind kind, bool assumed}) _detected = _detectKind();
 
   /// The user's home directory, or null if the environment does not say.
   ///
   /// This is the plain home, not `~/.dvm`: startup files live in it.
   late final Directory? home = _detectHome();
 
+  /// Every startup file dvm knows about, and the shell that reads it.
+  ///
+  /// ONE table, because the three questions asked of these names have to agree:
+  /// which file to WRITE to, which files to SCAN, and — the one this leaf is
+  /// about — which files belong to a shell that is not the one detected. A
+  /// second list of names is how a file becomes writable but unscanned.
+  ///
+  /// The first entry for a shell is the one [primaryRcFile] names. Order is
+  /// otherwise the order [rcCandidates] reports findings in.
+  ///
+  /// PowerShell is absent on purpose: it has a profile, but it is not where
+  /// PATH belongs and its location differs between Windows PowerShell and
+  /// PowerShell 7. The line [pathLine] hands out edits the environment
+  /// directly, so there is no file to name and naming one anyway would send
+  /// the user to the wrong place.
+  static const List<(ShellKind, List<String>)> _rcFiles = [
+    (ShellKind.zsh, ['.zshrc']),
+    (ShellKind.zsh, ['.zshenv']),
+    (ShellKind.zsh, ['.zprofile']),
+    (ShellKind.zsh, ['.zlogin']),
+    (ShellKind.bash, ['.bashrc']),
+    (ShellKind.bash, ['.bash_profile']),
+    (ShellKind.bash, ['.bash_login']),
+    (ShellKind.posix, ['.profile']),
+    (ShellKind.fish, ['.config', 'fish', 'config.fish']),
+  ];
+
   /// The startup file to add the PATH line to, or null with no home.
   ///
   /// One file, named for [kind], because `setup` has to print a single
   /// instruction. It may well not exist yet; that is not an error, a user with
   /// no `.zshrc` still needs to be told to create one.
+  ///
+  /// It is only as good as [kind]. When [kindIsAssumed] is true this is a
+  /// GUESS, and [rcFileIsGuessed] says when the home directory contradicts it —
+  /// callers that WRITE must consult that before they do.
   File? get primaryRcFile {
-    final names = switch (kind) {
-      ShellKind.zsh => const ['.zshrc'],
-      ShellKind.bash => const ['.bashrc'],
-      ShellKind.fish => const ['.config', 'fish', 'config.fish'],
-      ShellKind.posix => const ['.profile'],
-      // PowerShell has a profile, but it is not where PATH belongs and its
-      // location differs between Windows PowerShell and PowerShell 7. The
-      // line [pathLine] hands out edits the environment directly, so there is
-      // no file to name and naming one anyway would send the user to the
-      // wrong place.
-      ShellKind.powershell => null,
-    };
-    return names == null ? null : _inHome(names);
+    for (final (owner, names) in _rcFiles) {
+      if (owner == kind) return _inHome(names);
+    }
+    return null;
   }
 
   /// Every startup file worth scanning for a shadowing definition.
@@ -179,23 +257,35 @@ class ShellFacts {
   /// what breaks a zsh login even if `$SHELL` says something else right now,
   /// and `$SHELL` is exactly the variable that is wrong inside a subshell, an
   /// editor terminal, or a CI runner.
-  List<File> get rcCandidates {
-    const relative = <List<String>>[
-      ['.zshrc'],
-      ['.zshenv'],
-      ['.zprofile'],
-      ['.zlogin'],
-      ['.bashrc'],
-      ['.bash_profile'],
-      ['.bash_login'],
-      ['.profile'],
-      ['.config', 'fish', 'config.fish'],
-    ];
-    return [
-      for (final names in relative)
-        if (_inHome(names) case final file?) file,
-    ];
-  }
+  List<File> get rcCandidates => [
+        for (final (_, names) in _rcFiles)
+          if (_inHome(names) case final file?) file,
+      ];
+
+  /// Startup files that EXIST in this home and belong to a shell other than
+  /// [kind].
+  ///
+  /// The evidence that [primaryRcFile] may be a file nothing reads. A machine
+  /// whose `$SHELL` says nothing but whose home holds a `.zshrc` is a machine
+  /// where somebody uses zsh, and zsh does not read `.profile`.
+  /// Each is paired with the shell it belongs to, so a caller can name that
+  /// shell in the one command that resolves the ambiguity.
+  List<({ShellKind shell, File file})> get otherShellRcFiles => [
+        for (final (owner, names) in _rcFiles)
+          if (owner != kind)
+            if (_inHome(names) case final file? when file.existsSync())
+              (shell: owner, file: file),
+      ];
+
+  /// Whether [primaryRcFile] is a guess the home directory contradicts.
+  ///
+  /// Both halves are needed. [kindIsAssumed] alone is the ordinary CI case,
+  /// where there is no startup file at all and `.profile` is as good an answer
+  /// as any; [otherShellRcFiles] alone is the ordinary developer case, where
+  /// `$SHELL` said zsh and a stale `.bashrc` is none of dvm's business.
+  /// Together they are the state that wrote a PATH line nothing would ever
+  /// read.
+  bool get rcFileIsGuessed => kindIsAssumed && otherShellRcFiles.isNotEmpty;
 
   /// The single line to add to [primaryRcFile] so [directories] are on PATH,
   /// ahead of everything already there.
@@ -292,9 +382,15 @@ class ShellFacts {
 
   /// Reads every candidate startup file, looking for something that would win
   /// over the `dvm` binary on PATH.
-  ShellScan scanForShadows() {
+  ///
+  /// Pass [shimsLine] to have the same pass also collect the files that claim
+  /// to put the shims directory on PATH. One pass and one matcher: a file dvm
+  /// reads for a shadow is a file dvm reads for a misfiled PATH line, and the
+  /// alternative is two scans that can disagree about which files exist.
+  ShellScan scanForShadows({ShimsPathLine? shimsLine}) {
     final shadows = <ShellShadow>[];
     final unreadable = <String, String>{};
+    final pathLines = <RcPathLine>[];
 
     for (final file in rcCandidates) {
       if (!file.existsSync()) continue;
@@ -314,6 +410,10 @@ class ShellFacts {
         // is already correct.
         if (text.isEmpty || text.startsWith('#')) continue;
 
+        if (shimsLine != null && shimsLine.matches(text)) {
+          pathLines.add(RcPathLine(file: file, line: index + 1, text: text));
+        }
+
         final kind = _classify(text);
         if (kind == null) continue;
         shadows.add(
@@ -327,7 +427,11 @@ class ShellFacts {
       }
     }
 
-    return ShellScan(shadows: shadows, unreadable: unreadable);
+    return ShellScan(
+      shadows: shadows,
+      unreadable: unreadable,
+      pathLines: pathLines,
+    );
   }
 
   /// Which kind of shadow [line] is, or null if it is an ordinary line.
@@ -355,22 +459,25 @@ class ShellFacts {
   static final RegExp _legacyScriptPattern =
       RegExp(r'\.dvm[/\\]scripts[/\\]dvm\b');
 
-  ShellKind _detectKind() {
+  ({ShellKind kind, bool assumed}) _detectKind() {
     final path = shellPath;
     if (path == null) {
       // On Windows the absence of $SHELL is itself the answer: cmd and
       // PowerShell do not set it, and both take PATH from the environment
-      // rather than from a startup file.
+      // rather than from a startup file. Everywhere else it is an absence and
+      // nothing more, so the posix fallback is flagged as the guess it is.
       return fileSystem.path.style == p.Style.windows
-          ? ShellKind.powershell
-          : ShellKind.posix;
+          ? (kind: ShellKind.powershell, assumed: false)
+          : (kind: ShellKind.posix, assumed: true);
     }
     // Basename, because $SHELL is a path: /bin/zsh, /opt/homebrew/bin/fish.
     final name = p.posix.basename(path).toLowerCase();
     for (final kind in ShellKind.values) {
-      if (name == kind.token || name.endsWith(kind.token)) return kind;
+      if (name == kind.token || name.endsWith(kind.token)) {
+        return (kind: kind, assumed: false);
+      }
     }
-    return ShellKind.posix;
+    return (kind: ShellKind.posix, assumed: true);
   }
 
   Directory? _detectHome() {

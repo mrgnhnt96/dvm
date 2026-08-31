@@ -175,8 +175,34 @@ class DvmContext {
   /// absolute rather than becoming `../..`, and a path under `$HOME` stays
   /// absolute rather than becoming `~/…`: both were considered and declined,
   /// because counting `..` segments is work the absolute path does not ask for.
-  /// It also means the SDK store (`~/.dvm/versions/<v>`) needs no special case
-  /// here — it is never inside a project — so do not write one.
+  ///
+  /// WHAT MUST NEVER COME THROUGH HERE — three kinds of path, and the rule is
+  /// about what the path NAMES, not where it happens to sit:
+  ///
+  ///  * a PATH entry (`~/.dvm/shims`, `~/.dvm/bin`),
+  ///  * a shell startup file, or a backup of one (`~/.zshrc`, `~/.profile`),
+  ///  * anything in the dvm home — the SDK store, `config.json`, the shim, the
+  ///    dvm binary itself.
+  ///
+  /// This USED to be phrased as "the SDK store needs no special case, it is
+  /// never inside a project". That reasoning was wrong, and it shipped: it
+  /// assumed nobody's working directory is `$HOME`, when `$HOME` is exactly
+  /// where people stand to run `dvm setup` and `dvm doctor`. Standing there,
+  /// `~/.dvm/shims` IS under the working directory, so doctor printed
+  /// `FAIL PATH: .dvm/shims is not on PATH` three lines above the absolute
+  /// `export PATH="/Users/…/.dvm/shims:\$PATH"` that fixes it — one directory,
+  /// two spellings, and the relative one is not a thing the reader can paste
+  /// anywhere. `setup` printed `source .profile` the same way.
+  ///
+  /// A relative PATH entry is worse than ugly: a shell resolves it against
+  /// whatever directory each process happens to be in.
+  ///
+  /// So `commands/setup_command.dart` calls this NOWHERE — every path it names
+  /// is one of the three above — and `commands/doctor_command.dart` calls it
+  /// only for `.dvmrc` and `.dvm/dart_sdk`, which are project files and are the
+  /// case this method exists for. `test/commands/home_cwd_output_test.dart`
+  /// pins both commands' output with the working directory set to `\$HOME`,
+  /// which is the case nobody thought to try.
   ///
   /// The working directory ITSELF is not under itself, so it keeps its absolute
   /// path. `Pinned Dart 3.13.2 for .` names the pin worse than the directory's
