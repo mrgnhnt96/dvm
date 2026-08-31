@@ -63,7 +63,7 @@ class GlobalCommand extends Command<int> {
       }
       context.out.writeln('  ${ref.trail}');
     }
-    context.out.writeln('  ${context.paths.configFile.path}');
+    context.out.writeln('  ${context.display(context.paths.configFile.path)}');
     return 0;
   }
 

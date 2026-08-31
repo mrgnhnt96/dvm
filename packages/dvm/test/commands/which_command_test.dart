@@ -31,7 +31,11 @@ void main() {
     expect(await harness.run(['which']), 0);
 
     expect(harness.output, contains('rule 2 of 5'));
-    expect(harness.output, contains('pinned by /project/.dvmrc'));
+    // Relative: the .dvmrc is in the working directory. The first line, the
+    // one `dvm which | head -1` takes, stays absolute — pinned separately
+    // below in "the machine-readable paths stay absolute".
+    expect(harness.output, contains('pinned by .dvmrc'));
+    expect(harness.output, isNot(contains('pinned by /project/.dvmrc')));
   });
 
   test('rule 2 finds a .dvmrc in a parent directory', () async {
@@ -43,6 +47,9 @@ void main() {
     harness.fileSystem.currentDirectory = '/project/packages/app';
 
     expect(await harness.run(['which']), 0);
+    // ABSOLUTE, and this is the point of the test: the governing .dvmrc is
+    // ABOVE the working directory, so it is not under it and the display rule
+    // leaves it alone. Nobody should later "fix" this into `../..`.
     expect(harness.output, contains('pinned by /project/.dvmrc'));
   });
 
@@ -107,6 +114,70 @@ void main() {
 
     expect(await harness.run(['which', '--path']), 0);
     expect(harness.output.trim(), '/dvm/versions/3.9.0/bin/dart');
+  });
+
+  group("which's machine-readable paths stay absolute", () {
+    /// The carve-out from the relative-path display rule, and the reason it
+    /// exists: these two lines are captured by scripts and IDEs, which run
+    /// with a working directory of their own. A relative path resolves against
+    /// the CALLER's directory rather than dvm's, so a consumer handed
+    /// `.dvm/dart_sdk/bin/dart` silently points at nothing. Every other path
+    /// `which` prints is prose for a human and follows the normal rule.
+    ///
+    /// The SDK is pinned INSIDE the working directory here on purpose: that is
+    /// the one arrangement where the display rule would fire, so a test using
+    /// the usual `/dvm/versions/...` store could not tell the carve-out from
+    /// a path that was simply never under the working directory.
+    void sdkInsideTheWorkingDirectory() {
+      const inside = '/project/sdk/3.9.0';
+      harness.paths.dartExecutable(harness.fileSystem.directory(inside))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('#!/bin/sh\n');
+      harness.environment['DVM_HOME'] = '/project/sdk-home';
+      harness.fileSystem
+          .directory('/project/sdk-home/versions')
+          .createSync(recursive: true);
+      harness.fileSystem
+          .link('/project/sdk-home/versions/3.9.0')
+          .createSync(inside);
+      harness.writeConfig(const DvmConfig(global: '3.9.0'));
+    }
+
+    test(
+        '--path prints an absolute path even when the SDK is under the '
+        'working directory', () async {
+      sdkInsideTheWorkingDirectory();
+
+      expect(await harness.run(['which', '--path']), 0);
+
+      final printed = harness.output.trim();
+      expect(printed, startsWith('/'),
+          reason: 'a script capturing this resolves it from its own directory');
+      expect(printed, '/project/sdk-home/versions/3.9.0/bin/dart');
+    });
+
+    test(
+        'the first line of default output — what `dvm which | head -1` '
+        'takes — is absolute too', () async {
+      sdkInsideTheWorkingDirectory();
+
+      expect(await harness.run(['which']), 0);
+
+      final firstLine = harness.output.split('\n').first;
+      expect(firstLine, startsWith('/'));
+      expect(firstLine, '/project/sdk-home/versions/3.9.0/bin/dart');
+    });
+
+    test('the human-readable SDK: line does follow the normal rule', () async {
+      sdkInsideTheWorkingDirectory();
+
+      expect(await harness.run(['which']), 0);
+
+      // Under /project, which is the working directory, so relative — this is
+      // what makes the two assertions above a real carve-out rather than a
+      // restatement of what the rule would have done anyway.
+      expect(harness.output, contains('SDK: sdk-home/versions/3.9.0'));
+    });
   });
 
   test('`current` is the same command', () async {

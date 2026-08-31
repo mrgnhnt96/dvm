@@ -41,7 +41,9 @@ void main() {
 
     expect(harness.output, contains(RegExp(r'\* 3\.9\.0.*this project')));
     expect(harness.output, contains(RegExp(r'  3\.13\.2.*global default')));
-    expect(harness.output, contains('/project/.dvmrc'));
+    // Under the working directory, so relative.
+    expect(harness.output, contains('pinned by .dvmrc'));
+    expect(harness.output, isNot(contains('/project/.dvmrc')));
   });
 
   test('shows the aliases and channels pointing at each version', () async {

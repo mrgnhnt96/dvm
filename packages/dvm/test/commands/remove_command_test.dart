@@ -132,8 +132,9 @@ void main() {
     expect(await harness.run(['remove', '3.9.0']), 0);
     expect(
         harness.errors,
-        contains('/project/.dvmrc pins the version just '
+        contains('.dvmrc pins the version just '
             'removed'));
+    expect(harness.errors, isNot(contains('/project/.dvmrc')));
   });
 
   group('when the filesystem refuses the delete', () {

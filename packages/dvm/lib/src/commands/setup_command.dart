@@ -94,8 +94,8 @@ class SetupCommand extends Command<int> {
     final shim = await writer.write(binary.path);
 
     context.out
-      ..writeln('Wrote ${shim.path}')
-      ..writeln('  -> ${binary.path} exec dart')
+      ..writeln('Wrote ${context.display(shim.path)}')
+      ..writeln('  -> ${context.display(binary.path)} exec dart')
       ..writeln();
 
     final shell = _shell();
@@ -144,7 +144,8 @@ class SetupCommand extends Command<int> {
       final file = context.fileSystem.file(_absolute(override));
       if (!file.existsSync()) {
         throw ConfigException(
-          '--dvm-path names ${file.path}, which does not exist.',
+          '--dvm-path names ${context.display(file.path)}, which does not '
+          'exist.',
         );
       }
       return file;
@@ -203,6 +204,9 @@ class SetupCommand extends Command<int> {
         ..writeln()
         ..writeln('For the terminal you are in right now:')
         ..writeln()
+        // ABSOLUTE, deliberately: this is a PATH value the user pastes into
+        // a shell, not prose about a file. A relative entry on PATH is
+        // resolved against whatever directory each process happens to be in.
         ..writeln('  \$env:Path = '
             "'${context.paths.shimsDir.path};' + \$env:Path");
       return;
@@ -220,7 +224,7 @@ class SetupCommand extends Command<int> {
 
     final verb = rcFile.existsSync() ? 'Add this line to' : 'Create';
     context.out
-      ..writeln('$verb ${rcFile.path} '
+      ..writeln('$verb ${context.display(rcFile.path)} '
           '(${shell.shellPath ?? 'no \$SHELL set, assuming ${shell.kind.token}'}):')
       ..writeln()
       ..writeln('  $line')
@@ -248,7 +252,8 @@ class SetupCommand extends Command<int> {
 
     context.out
       ..writeln('Or let dvm add it for you: dvm setup --write-path-line')
-      ..writeln('It backs ${rcFile.path} up before touching it, and '
+      ..writeln('It backs ${context.display(rcFile.path)} up before touching '
+          'it, and '
           'dvm setup --remove-path-line takes the line back out.');
   }
 
@@ -271,20 +276,22 @@ class SetupCommand extends Command<int> {
     switch (result.outcome) {
       case PathLineOutcome.alreadyPresent:
         context.out.writeln(
-          '${editor.rcFile.path} already puts ${context.paths.shimsDir.path} '
-          'on PATH (line ${result.line}), so there is nothing to add.',
+          '${context.display(editor.rcFile.path)} already puts '
+          '${context.display(context.paths.shimsDir.path)} on PATH '
+          '(line ${result.line}), so there is nothing to add.',
         );
       case PathLineOutcome.created:
         context.out
-          ..writeln('Created ${editor.rcFile.path} with:')
+          ..writeln('Created ${context.display(editor.rcFile.path)} with:')
           ..writeln()
           ..writeln('  ${editor.line}');
         _explainNextShell(editor);
       case PathLineOutcome.written:
         context.out
-          ..writeln('Backed up ${editor.rcFile.path} '
-              '-> ${result.backup!.path}')
-          ..writeln('Added this line to ${editor.rcFile.path}:')
+          ..writeln('Backed up ${context.display(editor.rcFile.path)} '
+              '-> ${context.display(result.backup!.path)}')
+          ..writeln(
+              'Added this line to ${context.display(editor.rcFile.path)}:')
           ..writeln()
           ..writeln('  ${editor.line}');
         _explainNextShell(editor);
@@ -300,7 +307,7 @@ class SetupCommand extends Command<int> {
     context.out
       ..writeln()
       ..writeln('It takes effect in shells started after this. For the one '
-          'you are in: source ${editor.rcFile.path}')
+          'you are in: source ${context.display(editor.rcFile.path)}')
       ..writeln('Undo it with: dvm setup --remove-path-line');
   }
 
@@ -314,25 +321,27 @@ class SetupCommand extends Command<int> {
     switch (result.outcome) {
       case PathLineOutcome.removed:
         context.out
-          ..writeln('Backed up ${editor.rcFile.path} '
-              '-> ${result.backup!.path}')
-          ..writeln('Removed dvm\'s PATH line from ${editor.rcFile.path}.')
+          ..writeln('Backed up ${context.display(editor.rcFile.path)} '
+              '-> ${context.display(result.backup!.path)}')
+          ..writeln('Removed dvm\'s PATH line from '
+              '${context.display(editor.rcFile.path)}.')
           ..writeln('Shells started after this will no longer find the shims. '
               'The shims themselves are still in '
-              '${context.paths.shimsDir.path}.');
+              '${context.display(context.paths.shimsDir.path)}.');
       case PathLineOutcome.foreign:
         // Reported rather than removed, and still a success: the file is in
         // the state the user put it in, and the one thing dvm knows for sure
         // is that it did not write this line.
         context.out
-          ..writeln('${editor.rcFile.path} puts '
-              '${context.paths.shimsDir.path} on PATH at line ${result.line}, '
-              'but dvm did not write that line — there are no dvm markers '
-              'around it — so it has been left as it is.')
+          ..writeln('${context.display(editor.rcFile.path)} puts '
+              '${context.display(context.paths.shimsDir.path)} on PATH at '
+              'line ${result.line}, but dvm did not write that line — there '
+              'are no dvm markers around it — so it has been left as it is.')
           ..writeln('Remove it by hand if you want it gone.');
       case PathLineOutcome.absent:
         context.out.writeln(
-          'There is no dvm PATH line in ${editor.rcFile.path}, '
+          'There is no dvm PATH line in '
+          '${context.display(editor.rcFile.path)}, '
           'so there is nothing to remove.',
         );
       case PathLineOutcome.written:
@@ -420,13 +429,13 @@ class SetupCommand extends Command<int> {
       context.err
         ..writeln()
         ..writeln('WARNING: an older dvm (cbracken/dvm) shares '
-            '${context.paths.home.path}:');
+            '${context.display(context.paths.home.path)}:');
       if (legacy.script case final script?) {
-        context.err
-            .writeln('  ${script.path}  (the shell function it defines)');
+        context.err.writeln('  ${context.display(script.path)}  '
+            '(the shell function it defines)');
       }
       for (final directory in legacy.directories) {
-        context.err.writeln('  ${directory.path}');
+        context.err.writeln('  ${context.display(directory.path)}');
       }
       context.err.writeln('Import its SDKs with: dvm migrate');
     }

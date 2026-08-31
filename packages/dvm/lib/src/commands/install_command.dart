@@ -51,7 +51,7 @@ class InstallCommand extends Command<int> {
     if (!force && context.installer.isInstalled(target.version)) {
       context.out.writeln(
         'Dart ${target.version} is already installed at '
-        '${context.paths.versionDir(target.version).path}',
+        '${context.display(context.paths.versionDir(target.version).path)}',
       );
       _recordChannel(target);
       return 0;
@@ -65,7 +65,7 @@ class InstallCommand extends Command<int> {
 
     _recordChannel(target);
     context.out.writeln('Installed Dart ${target.version} to '
-        '${directory.path}');
+        '${context.display(directory.path)}');
     return 0;
   }
 
@@ -104,15 +104,16 @@ class InstallCommand extends Command<int> {
 
       if (seen.length >= _maxAliasHops) {
         throw ConfigException(
-          'The alias "$requested" in ${context.paths.configFile.path} does '
-          'not lead to a version after $_maxAliasHops hops.',
+          'The alias "$requested" in '
+          '${context.display(context.paths.configFile.path)} does not lead to '
+          'a version after $_maxAliasHops hops.',
         );
       }
     }
 
     throw ConfigException(
-      'The alias "$current" in ${context.paths.configFile.path} points at '
-      'itself.',
+      'The alias "$current" in '
+      '${context.display(context.paths.configFile.path)} points at itself.',
     );
   }
 

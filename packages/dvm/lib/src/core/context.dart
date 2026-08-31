@@ -161,4 +161,54 @@ class DvmContext {
 
   /// The directory commands act relative to — `.dvmrc` lookup starts here.
   Directory get workingDirectory => fileSystem.currentDirectory;
+
+  /// A path as it should be PRINTED: relative to [workingDirectory] when it
+  /// lies under it, and byte-for-byte unchanged otherwise.
+  ///
+  /// The signal in `Pinned Dart 3.13.2 for …/zonai` and
+  /// `…/zonai/.dvmrc -> commit this` is WHICH file, and the repeated prefix in
+  /// front of it is the directory the reader is already standing in. So
+  /// `.dvmrc`, `.dvm/dart_sdk`, `packages/api/.dvmrc` — with no `./` on the
+  /// front, which is noise for the same reason the prefix was.
+  ///
+  /// Deliberately only that one case. A path in a PARENT directory stays
+  /// absolute rather than becoming `../..`, and a path under `$HOME` stays
+  /// absolute rather than becoming `~/…`: both were considered and declined,
+  /// because counting `..` segments is work the absolute path does not ask for.
+  /// It also means the SDK store (`~/.dvm/versions/<v>`) needs no special case
+  /// here — it is never inside a project — so do not write one.
+  ///
+  /// The working directory ITSELF is not under itself, so it keeps its absolute
+  /// path. `Pinned Dart 3.13.2 for .` names the pin worse than the directory's
+  /// own name does.
+  ///
+  /// The one degenerate case is the filesystem ROOT. Everything is under `/`,
+  /// so the literal rule would turn every path dvm prints into a relative one
+  /// the moment somebody runs a command from there — `/dvm/versions/3.13.2`
+  /// becomes `dvm/versions/3.13.2`, which reads like it could be anywhere. The
+  /// prefix this rule exists to remove is noise the reader already knows; at
+  /// the root that prefix is one separator, and it is the character carrying
+  /// the only thing the path was telling you for certain. So a root working
+  /// directory formats nothing, and output from `/` is byte-for-byte what it
+  /// was before this method existed.
+  ///
+  /// Purely lexical, and no filesystem is touched: this runs on output, and
+  /// two spellings of one file is a display question, not a resolution one.
+  ///
+  /// This is the ONLY place output-formatting a path is allowed to happen.
+  /// `dvm which`'s machine-readable lines are the carve-out and they do not
+  /// call it; see `which_command.dart`. Anything dvm WRITES — `.dvmrc`
+  /// contents, the `.dvm/dart_sdk` target, the PATH line — is not output and
+  /// must never come through here.
+  String display(String path) {
+    final context = fileSystem.path;
+    final base = context.normalize(workingDirectory.absolute.path);
+    if (context.equals(context.rootPrefix(base), base)) return path;
+
+    final target = context.normalize(
+      context.isAbsolute(path) ? path : context.join(base, path),
+    );
+    if (!context.isWithin(base, target)) return path;
+    return context.relative(target, from: base);
+  }
 }

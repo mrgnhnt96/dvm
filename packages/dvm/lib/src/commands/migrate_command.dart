@@ -76,7 +76,7 @@ class MigrateCommand extends Command<int> {
     if (!plan.isPresent) {
       context.out.writeln(
         'Nothing to migrate: no older dvm (cbracken/dvm) install in '
-        '${plan.home.path}.\n'
+        '${context.display(plan.home.path)}.\n'
         'That directory would have a scripts/dvm and a darts/ in it.',
       );
       return 0;
@@ -95,7 +95,8 @@ class MigrateCommand extends Command<int> {
   /// their own machine in the output before dvm touches it.
   void _reportFound(MigrationPlan plan) {
     context.out
-      ..writeln('Found an older dvm (cbracken/dvm) in ${plan.home.path}:')
+      ..writeln('Found an older dvm (cbracken/dvm) in '
+          '${context.display(plan.home.path)}:')
       ..writeln('  ${plan.markers.join('  ')}')
       ..writeln();
   }
@@ -117,10 +118,10 @@ class MigrateCommand extends Command<int> {
     for (final entry in plan.entries) {
       final sdk = entry.sdk;
       final detail = switch (entry.action) {
-        MigrationAction.move => '-> ${entry.destination.path}',
+        MigrationAction.move => '-> ${context.display(entry.destination.path)}',
         MigrationAction.alreadyInstalled =>
           'SKIP: Dart ${sdk.version} is already installed at '
-              '${entry.destination.path}',
+              '${context.display(entry.destination.path)}',
         MigrationAction.duplicate =>
           'SKIP: ${entry.note}, and dvm will not overwrite it',
       };
@@ -150,7 +151,8 @@ class MigrateCommand extends Command<int> {
       context.out.writeln('Would move:');
       for (final entry in moves) {
         context.out.writeln(
-          '  ${entry.sdk.directory.path}  ->  ${entry.destination.path}',
+          '  ${context.display(entry.sdk.directory.path)}  ->  '
+          '${context.display(entry.destination.path)}',
         );
       }
     }
@@ -170,11 +172,13 @@ class MigrateCommand extends Command<int> {
         'it — a plain `dvm migrate` never deletes any of this:',
       );
       for (final entity in plan.leftovers) {
-        context.out.writeln('  ${entity.path}');
+        context.out.writeln('  ${context.display(entity.path)}');
       }
       if (!plan.hasUnmigratedSdks) {
         final darts = LegacyDvmPaths(context.paths).emptyDartsDir();
-        if (darts != null) context.out.writeln('  ${darts.path}');
+        if (darts != null) {
+          context.out.writeln('  ${context.display(darts.path)}');
+        }
       } else {
         context.out.writeln(
           '  (darts/ itself stays until every SDK above has moved)',
@@ -199,7 +203,7 @@ class MigrateCommand extends Command<int> {
       if (outcome.moved) {
         context.out.writeln(
           'Moved Dart ${outcome.entry.sdk.version} to '
-          '${outcome.entry.destination.path}',
+          '${context.display(outcome.entry.destination.path)}',
         );
       } else {
         failed = true;
@@ -225,8 +229,8 @@ class MigrateCommand extends Command<int> {
     } else {
       context.out
         ..writeln(
-          "The older tool's own files are still in ${plan.home.path} and are "
-          'now unused:',
+          "The older tool's own files are still in "
+          '${context.display(plan.home.path)} and are now unused:',
         )
         ..writeln('  ${plan.leftovers.map((e) => e.basename).join('  ')}')
         ..writeln(
@@ -249,7 +253,7 @@ class MigrateCommand extends Command<int> {
       context.err.writeln(
         'dvm: refusing to clean up — '
         '${plan.moves.length} SDK(s) in darts/ have not been migrated yet:\n'
-        '${plan.moves.map((e) => '  ${e.sdk.directory.path}').join('\n')}\n'
+        '${plan.moves.map((e) => '  ${context.display(e.sdk.directory.path)}').join('\n')}\n'
         'Run `dvm migrate` first.',
       );
       return 1;
@@ -265,9 +269,10 @@ class MigrateCommand extends Command<int> {
       return 0;
     }
 
-    context.out.writeln('These will be deleted from ${plan.home.path}:');
+    context.out.writeln(
+        'These will be deleted from ${context.display(plan.home.path)}:');
     for (final entity in targets) {
-      context.out.writeln('  ${entity.path}');
+      context.out.writeln('  ${context.display(entity.path)}');
     }
     context.out.writeln();
 
@@ -285,11 +290,12 @@ class MigrateCommand extends Command<int> {
     var failed = false;
     for (final outcome in outcomes) {
       if (outcome.removed) {
-        context.out.writeln('Removed ${outcome.entity.path}');
+        context.out.writeln('Removed ${context.display(outcome.entity.path)}');
       } else {
         failed = true;
         context.err.writeln(
-          'dvm: could not remove ${outcome.entity.path}: ${outcome.failure}',
+          'dvm: could not remove ${context.display(outcome.entity.path)}: '
+          '${outcome.failure}',
         );
       }
     }
@@ -314,8 +320,8 @@ class MigrateCommand extends Command<int> {
     if (!context.paths.versionDir(version).existsSync()) {
       context.err.writeln(
         'The older tool had Dart $version active, but it is not in '
-        '${context.paths.versionsDir.path}, so dvm is not making it the '
-        'default. Install it with: dvm install $version',
+        '${context.display(context.paths.versionsDir.path)}, so dvm is not '
+        'making it the default. Install it with: dvm install $version',
       );
       return;
     }

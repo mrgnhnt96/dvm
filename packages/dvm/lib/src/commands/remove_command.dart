@@ -72,7 +72,8 @@ class RemoveCommand extends Command<int> {
       context.err.writeln(refusal);
       return 1;
     }
-    context.out.writeln('Removed Dart $version (${directory.path}).');
+    context.out
+        .writeln('Removed Dart $version (${context.display(directory.path)}).');
 
     _dropStaleChannelRecords(version);
     if (dependents.isNotEmpty) {
@@ -115,7 +116,7 @@ class RemoveCommand extends Command<int> {
           : 'Check that everything under it is yours to delete and that '
               'nothing has it open, then run this again.';
       return 'Could not remove Dart $version: $said\n'
-          '  ${directory.path}\n'
+          '  ${context.display(directory.path)}\n'
           '$advice\n'
           'Part of the SDK may already have been deleted before this stopped, '
           'so running the same command again is what finishes the job.';
@@ -135,7 +136,7 @@ class RemoveCommand extends Command<int> {
     if (global != null && _resolvesTo(global, version)) {
       dependents.add(
         'the global default${global == version ? '' : ' ("$global")'} in '
-        '${context.paths.configFile.path}',
+        '${context.display(context.paths.configFile.path)}',
       );
     }
 
@@ -206,7 +207,7 @@ class RemoveCommand extends Command<int> {
     if (pin == null || !_resolvesTo(pin, version)) return;
 
     context.err.writeln(
-      '${rcFile.path} pins the version just removed. '
+      '${context.display(rcFile.path)} pins the version just removed. '
       'Run: dvm use <version>',
     );
   }

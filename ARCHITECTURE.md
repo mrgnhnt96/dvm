@@ -252,6 +252,44 @@ Three properties are load-bearing:
 Lines are prefixed `[dvm <area>]` — `resolve`, `exec`, `net`, `fs`, `proc`,
 `install`, `cli` — so a log can be grepped down to one concern.
 
+## Printing a path
+
+A path **under the working directory** prints RELATIVE to it, with no `./` in
+front: `.dvmrc`, `.dvm/dart_sdk`, `packages/api/.dvmrc`. **Everything else
+prints absolute.** A parent directory does not become `../..`, and a path under
+`$HOME` does not become `~/…` — both were considered and declined. The working
+directory itself is not under itself, so it keeps its absolute path: `Pinned
+Dart 3.13.2 for .` names the project worse than its own path does.
+
+The point is signal. In `dvm use` the thing worth reading is WHICH file — and in
+a repository the user is standing in, everything before it is the directory they
+already know they are in. Note what the rule gives for free: the SDK store
+(`~/.dvm/versions/<v>`) is never inside a project, so it stays absolute with no
+special case. Do not write one.
+
+`DvmContext.display` is the only place this happens, and it is deliberately one
+function rather than `p.relative` at each call site — that is how the carve-out
+below gets forgotten at the thirty-fourth. It is purely lexical and touches no
+filesystem. A working directory that is the filesystem ROOT formats nothing:
+everything is under `/`, and stripping that one character removes the only thing
+the path was stating for certain.
+
+Three things must NOT go through it:
+
+- **`dvm which`'s machine-readable paths.** The `--path` flag's entire output,
+  and the first line of the default output, which is what `dvm which | head -1`
+  takes. A relative path there resolves against the CALLER's working directory,
+  which is not necessarily dvm's, so a consumer handed `.dvm/dart_sdk/bin/dart`
+  silently points at nothing. `which`'s `SDK:` line and the rest of its prose
+  follow the normal rule. Tests pin both.
+- **Anything dvm WRITES to a file.** `.dvmrc` contents, the `.dvm/dart_sdk`
+  symlink target, and the PATH line `setup --write-path-line` adds are all
+  absolute and stay absolute. This is about what is PRINTED and nothing else.
+  The PowerShell `$env:Path` snippet counts here too: it is a PATH value the
+  user pastes, not prose about a file.
+- **The verbose channel.** `-v` output is a diagnostic read when something is
+  already wrong, and an unambiguous path is worth more there than a short one.
+
 ## Command surface
 
 | Command | Behavior |

@@ -112,22 +112,25 @@ class UseCommand extends Command<int> {
     final link = _linkProjectSdk(project, ref.version);
 
     final via = ref.isDirect ? '' : ' (${ref.trail})';
-    context.out.writeln('Pinned Dart ${ref.version} for ${project.path}$via.');
+    context.out.writeln(
+        'Pinned Dart ${ref.version} for ${context.display(project.path)}$via.');
     if (project.path != here.path) {
+      // `here` IS the working directory, so it is never relative: the line says
+      // where the user is standing, and `.` would not.
       context.out.writeln(
         '  You are in ${here.path}, which that pin covers, so the .dvmrc above '
         'it is the one that changed.',
       );
     }
     context.out
-      ..writeln('  ${rcFile.path} -> commit this')
-      ..writeln(
-          '  ${link.path} -> ${context.paths.versionDir(ref.version).path}'
+      ..writeln('  ${context.display(rcFile.path)} -> commit this')
+      ..writeln('  ${context.display(link.path)} -> '
+          '${context.display(context.paths.versionDir(ref.version).path)}'
           ' (for your IDE; do not commit it)');
     if (shadowed != null) {
       context.out.writeln(
-        '  This pin shadows ${shadowed.path}, which no longer applies in '
-        '${project.path} or below it.',
+        '  This pin shadows ${context.display(shadowed.path)}, which no longer '
+        'applies in ${context.display(project.path)} or below it.',
       );
     }
 
@@ -170,7 +173,7 @@ class UseCommand extends Command<int> {
 
     if (_ignoresDvmDir(gitignore)) {
       context.out.writeln('`$_ignoreRule` is already ignored by '
-          '${gitignore.path}.');
+          '${context.display(gitignore.path)}.');
       return;
     }
 
@@ -185,8 +188,8 @@ class UseCommand extends Command<int> {
       // Naming the file matters here for the same reason it does above: it
       // sits next to the .dvmrc, which may be well above where the user is.
       context.out.writeln(
-        '`$_ignoreRule` is not ignored yet by ${gitignore.path}. '
-        'Add it with: $rerun',
+        '`$_ignoreRule` is not ignored yet by '
+        '${context.display(gitignore.path)}. Add it with: $rerun',
       );
       return;
     }
@@ -198,7 +201,8 @@ class UseCommand extends Command<int> {
       "# dvm's per-project SDK symlink; .dvmrc is the part you commit.\n"
       '$_ignoreRule\n',
     );
-    context.out.writeln('Added `$_ignoreRule` to ${gitignore.path}.');
+    context.out
+        .writeln('Added `$_ignoreRule` to ${context.display(gitignore.path)}.');
   }
 
   /// Whether [gitignore] already covers the `.dvm` directory.
