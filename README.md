@@ -19,6 +19,20 @@ Dart on it — it is the thing that installs Dart. From there,
 [`dvm setup`](https://dvm.mrgnhnt.com/getting-started/shell-setup) writes the
 `dart` shim and hands you the one line that puts it on your `PATH`.
 
+Note that plain `dvm setup` **prints** that line rather than adding it — it does
+not edit your shell startup file. To have dvm add it for you:
+
+```sh
+dvm setup --write-path-line
+```
+
+Either way `~/.dvm/shims` has to come *before* anything else that provides a
+`dart` — a Flutter SDK, `fvm`, asdf, a Homebrew `dart`. If `which dart` is not
+the shim afterwards, `dvm doctor` names the entry that is winning. See
+[The Shim and Your PATH](https://dvm.mrgnhnt.com/getting-started/shell-setup)
+for the details, including the `export PATH=...` line that discards everything
+above it.
+
 ## Pin a project
 
 [`dvm install`](https://dvm.mrgnhnt.com/commands/install) puts an SDK in the
