@@ -11,6 +11,7 @@ import '../core/releases.dart';
 import '../core/verbose.dart';
 import 'dart_archive_client.dart';
 import 'dart_archive_exception.dart';
+import 'progress_bar.dart';
 import 'sdk_downloader.dart';
 import 'sdk_extractor.dart';
 
@@ -125,9 +126,34 @@ class SdkInstaller implements Installer {
         () => 'extracting ${zip.path} into ${unpacked.path}',
       );
       final extracting = _verbose.stopwatch();
-      final modes = await _extractor.extract(
-        archive: zip,
-        destination: unpacked,
+      // The extraction used to be one opaque await, so the download bar hit
+      // 100% and the process then printed nothing until the install finished.
+      // Telling the user the work is done and then visibly not being done is
+      // worse than showing no progress at all, so this reports the same way
+      // the download does, through the same bar.
+      _progress.writeln('Unpacking Dart $version');
+      ProgressBar? bar;
+      var unpackedBytes = 0;
+      final modes = await _runUnpackingBar(
+        () => _extractor.extract(
+          archive: zip,
+          destination: unpacked,
+          onProgress: (completed, total) {
+            // Built on the first callback rather than up front because only
+            // the decoder knows how many bytes the archive holds.
+            bar ??= ProgressBar(
+              sink: _progress,
+              label: 'dart-sdk',
+              total: total,
+              isTerminal: _progressIsTerminal,
+            );
+            unpackedBytes = completed;
+            bar!.update(completed);
+          },
+        ),
+        // Even a failed extraction has to close the line the repaints have
+        // been rewriting, or the error prints onto the end of the bar.
+        finish: () => bar?.finish(unpackedBytes),
       );
       _verbose.log(
         VerboseArea.install,
@@ -173,6 +199,22 @@ class SdkInstaller implements Installer {
           () => 'removed scratch ${scratch.path}',
         );
       }
+    }
+  }
+
+  /// Runs [extract] with the progress line always closed off afterwards.
+  ///
+  /// A plain `finally` inside [install] would do, but the bar and the byte
+  /// count only exist for these few lines and keeping them here stops them
+  /// leaking into the rest of a long method.
+  Future<Map<String, int>> _runUnpackingBar(
+    Future<Map<String, int>> Function() extract, {
+    required void Function() finish,
+  }) async {
+    try {
+      return await extract();
+    } finally {
+      finish();
     }
   }
 

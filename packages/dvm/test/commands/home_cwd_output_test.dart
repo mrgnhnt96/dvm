@@ -1,3 +1,4 @@
+import 'package:dvm/dvm.dart';
 import 'package:test/test.dart';
 
 import 'harness.dart';
@@ -154,6 +155,112 @@ void main() {
 
       expect(harness.output,
           contains('$shims and $dvmHome/bin are already on your PATH'));
+    });
+  });
+
+  /// The rest of the audit. `doctor` and `setup` were fixed by not CALLING
+  /// `display`, which left the rule resting on every other call site
+  /// remembering the same thing — and `install` did not. It printed
+  /// `Installed Dart 3.13.2 to .dvm/versions/3.13.2`, one directory spelled two
+  /// ways depending on where the user was standing.
+  ///
+  /// These pin the rule at the call sites rather than only in
+  /// `test/core/display_path_test.dart`, because a unit test of `display`
+  /// cannot say whether a command routes a store path through it.
+  group('every command names the dvm home absolutely, standing in \$HOME', () {
+    test('install says where it put the SDK, absolutely', () async {
+      standInHome();
+
+      expect(await harness.run(['install', '3.13.2']), 0);
+
+      // The reported bug, verbatim.
+      expect(harness.output,
+          contains('Installed Dart 3.13.2 to $dvmHome/versions/3.13.2'));
+      expect(harness.output, isNot(contains('to .dvm/versions/3.13.2')));
+    });
+
+    test('install says where an already-installed SDK is, absolutely',
+        () async {
+      standInHome();
+      harness.installVersion('3.13.2');
+
+      expect(await harness.run(['install', '3.13.2']), 0);
+
+      expect(harness.output,
+          contains('already installed at $dvmHome/versions/3.13.2'));
+      expect(harness.output, isNot(contains('at .dvm/versions/3.13.2')));
+    });
+
+    test('list names the SDK store absolutely, empty or not', () async {
+      standInHome();
+
+      expect(await harness.run(['list']), 0);
+      expect(harness.output, contains('installed in $dvmHome/versions'));
+
+      harness.clearOutput();
+      harness.installVersion('3.13.2');
+
+      expect(await harness.run(['list']), 0);
+      expect(harness.output, contains('SDKs in $dvmHome/versions'));
+      expect(harness.output, isNot(contains(' .dvm/versions')));
+    });
+
+    test('remove names the directory it deleted absolutely', () async {
+      standInHome();
+      harness.installVersion('3.13.2');
+
+      expect(await harness.run(['remove', '3.13.2']), 0);
+
+      expect(harness.output,
+          contains('Removed Dart 3.13.2 ($dvmHome/versions/3.13.2)'));
+    });
+
+    test('global names config.json absolutely', () async {
+      standInHome();
+      harness.installVersion('3.13.2');
+
+      expect(await harness.run(['global', '3.13.2']), 0);
+
+      expect(harness.output, contains('$dvmHome/config.json'));
+      expect(harness.output, isNot(contains(' .dvm/config.json')));
+    });
+
+    test('alias names config.json absolutely', () async {
+      standInHome();
+      harness.installVersion('3.13.2');
+      await harness.run(['alias', 'work', '3.13.2']);
+      harness.clearOutput();
+
+      expect(await harness.run(['alias']), 0);
+
+      expect(harness.output, contains('Aliases in $dvmHome/config.json'));
+    });
+
+    test('which names the SDK and config.json absolutely', () async {
+      standInHome();
+      harness.installVersion('3.13.2');
+      harness.writeConfig(const DvmConfig(global: '3.13.2'));
+
+      expect(await harness.run(['which']), 0);
+
+      expect(harness.output, contains('SDK: $dvmHome/versions/3.13.2'));
+      expect(harness.output, contains('$dvmHome/config.json'));
+      expect(harness.output, isNot(contains('SDK: .dvm/versions')));
+    });
+
+    test('use names the SDK store absolutely and the project files relatively',
+        () async {
+      standInHome();
+      harness.installVersion('3.13.2');
+
+      expect(await harness.run(['use', '3.13.2']), 0);
+
+      // One sentence carrying both halves of the rule: the symlink is a
+      // project file and reads relative, its target is the store and does not.
+      expect(harness.output,
+          contains('.dvm/dart_sdk -> $dvmHome/versions/3.13.2'));
+      expect(harness.output, contains('.dvmrc -> commit this'));
+      expect(harness.output, isNot(contains('-> .dvm/versions/3.13.2')));
     });
   });
 
