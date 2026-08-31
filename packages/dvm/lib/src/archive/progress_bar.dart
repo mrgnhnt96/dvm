@@ -1,3 +1,5 @@
+import '../core/style.dart';
+
 /// Progress for a long step, in whichever of two shapes the sink can read.
 ///
 /// A terminal gets one line repainted with `\r`: a 225MB download is thousands
@@ -17,12 +19,18 @@ class ProgressBar {
     required this.label,
     required this.total,
     required this.isTerminal,
-  });
+    Styles? styles,
+  }) : styles = styles ?? Styles();
 
   final StringSink sink;
   final String label;
   final int? total;
   final bool isTerminal;
+
+  /// Percentages and megabyte counts are supporting detail: they say a long
+  /// step is moving, and they are not what the reader scrolls back for. Dimmed
+  /// so the `Installed Dart 3.13.2 to …` above and below them carries the eye.
+  final Styles styles;
 
   /// How far the work has to move before a non-terminal sink is told again.
   /// Eleven lines describe a download; a thousand bury the log.
@@ -37,7 +45,9 @@ class ProgressBar {
     if (isTerminal) {
       if (percent == _lastPercent) return;
       _lastPercent = percent;
-      sink.write('\r${_line(received, percent)}');
+      // The carriage return stays OUTSIDE the styled span: it is a cursor
+      // movement, not part of the text being painted.
+      sink.write('\r${styles.detail(_line(received, percent))}');
       return;
     }
 
@@ -45,12 +55,12 @@ class ProgressBar {
     // it is then interrupted.
     if (_lastPercent >= 0 && percent - _lastPercent < _stepPercent) return;
     _lastPercent = percent;
-    sink.writeln(_line(received, percent));
+    sink.writeln(styles.detail(_line(received, percent)));
   }
 
   void finish(int received) {
     if (total == null || total == 0) {
-      sink.writeln('  $label  ${_mb(received)} MB');
+      sink.writeln(styles.detail('  $label  ${_mb(received)} MB'));
       return;
     }
 
@@ -67,7 +77,7 @@ class ProgressBar {
     final percent = _percentOf(received);
     if (percent == _lastPercent) return;
     _lastPercent = percent;
-    sink.writeln(_line(received, percent));
+    sink.writeln(styles.detail(_line(received, percent)));
   }
 
   int _percentOf(int received) => (received * 100 ~/ total!).clamp(0, 100);

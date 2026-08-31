@@ -93,9 +93,11 @@ class SetupCommand extends Command<int> {
     );
     final shim = await writer.write(binary.path);
 
+    // The RESULT line, then what it points at. The second is detail: somebody
+    // re-running `setup` is checking that the first one happened.
     context.out
-      ..writeln('Wrote ${shim.path}')
-      ..writeln('  -> ${binary.path} exec dart')
+      ..writeln(context.styles.heading('Wrote ${shim.path}'))
+      ..writeln(context.styles.detail('  -> ${binary.path} exec dart'))
       ..writeln();
 
     final shell = _shell();
@@ -127,7 +129,8 @@ class SetupCommand extends Command<int> {
 
     context.out
       ..writeln()
-      ..writeln('Then check it with: dvm doctor');
+      ..writeln('${context.styles.detail('Then check it with: ')}'
+          '${context.styles.command('dvm doctor')}');
 
     // A conflict makes the shim inert, so `setup` reporting success would be
     // a lie the user only finds out about the next time they run `dart`. A
@@ -218,15 +221,20 @@ class SetupCommand extends Command<int> {
   /// is how somebody concludes the flag is broken.
   void _explainOmittedBinDir(List<Directory> directories, File binary) {
     if (directories.length > 1) return;
+    final styles = context.styles;
     context.out
       ..writeln()
-      ..writeln('That line puts the shims on PATH, not `dvm` itself. The dvm '
-          'running now is ${binary.path}, which is not '
-          '${context.paths.binDir.path}, so dvm cannot tell '
-          'whether that directory is an install worth adding — a guess would '
-          'go into your startup file permanently.')
-      ..writeln('If you want the `dvm` command on PATH from there, add it '
-          'yourself.');
+      ..writeln(styles.detail(
+        'That line puts the shims on PATH, not `dvm` itself. The dvm '
+        'running now is ${binary.path}, which is not '
+        '${context.paths.binDir.path}, so dvm cannot tell '
+        'whether that directory is an install worth adding — a guess would '
+        'go into your startup file permanently.',
+      ))
+      ..writeln(styles.detail(
+        'If you want the `dvm` command on PATH from there, add it '
+        'yourself.',
+      ));
   }
 
   /// Whether [path] names the Dart VM rather than a dvm binary.
@@ -259,6 +267,7 @@ class SetupCommand extends Command<int> {
     File binary, {
     required bool blocked,
   }) {
+    final styles = context.styles;
     // Never hand out an instruction that is already in effect. A directory on
     // PATH right now needs no line, and a user told to add one reasonably
     // concludes dvm did not look. This is the ENVIRONMENT case;
@@ -275,11 +284,13 @@ class SetupCommand extends Command<int> {
       // itself is built from `directory.path` and never from this.
       final names = directories.map((directory) => directory.path);
       context.out.writeln(
-        directories.length == 1
-            ? '${names.single} is already on your PATH, so there is nothing '
-                'to add.'
-            : '${names.join(' and ')} are already on your PATH, so there is '
-                'nothing to add.',
+        styles.ok(
+          directories.length == 1
+              ? '${names.single} is already on your PATH, so there is nothing '
+                  'to add.'
+              : '${names.join(' and ')} are already on your PATH, so there is '
+                  'nothing to add.',
+        ),
       );
       return;
     }
@@ -290,22 +301,25 @@ class SetupCommand extends Command<int> {
     if (shell.kind == ShellKind.powershell) {
       final session = missing.map((directory) => directory.path).join(';');
       context.out
-        ..writeln('${shell.pathLineAction}:')
+        ..writeln(styles.heading('${shell.pathLineAction}:'))
         ..writeln()
-        ..writeln('  $line')
+        ..writeln('  ${styles.command(line)}')
         ..writeln()
-        ..writeln('That edits your user PATH, so it survives a reboot. It has '
-            'to go ahead of anything else that puts a dart on PATH, and it '
-            'only takes effect in terminals opened after you run it.')
+        ..writeln(styles.detail(
+          'That edits your user PATH, so it survives a reboot. It has '
+          'to go ahead of anything else that puts a dart on PATH, and it '
+          'only takes effect in terminals opened after you run it.',
+        ))
         ..writeln()
-        ..writeln('For the terminal you are in right now:')
+        ..writeln(styles.heading('For the terminal you are in right now:'))
         ..writeln()
         // ABSOLUTE, like every path this command prints: a relative entry on
         // PATH is resolved against whatever directory each process happens to
         // be in. See the note on [DvmContext.display] — `setup` names PATH
         // entries, startup files and the dvm home, and none of those may be
         // rendered relative to the working directory.
-        ..writeln("  \$env:Path = '$session;' + \$env:Path");
+        ..writeln(
+            '  ${styles.command("\$env:Path = '$session;' + \$env:Path")}');
       _explainOmittedBinDir(directories, binary);
       return;
     }
@@ -314,9 +328,9 @@ class SetupCommand extends Command<int> {
       // No HOME and no USERPROFILE: a container, or a hand-built environment.
       // There is no file to name, but the line is still the answer.
       context.out
-        ..writeln('Add this to your shell startup file:')
+        ..writeln(styles.heading('Add this to your shell startup file:'))
         ..writeln()
-        ..writeln('  $line');
+        ..writeln('  ${styles.command(line)}');
       _explainOmittedBinDir(directories, binary);
       return;
     }
@@ -334,14 +348,17 @@ class SetupCommand extends Command<int> {
 
     final verb = rcFile.existsSync() ? 'Add this line to' : 'Create';
     context.out
-      ..writeln('$verb ${rcFile.path} '
-          '(${shell.shellPath ?? 'no \$SHELL set, assuming ${shell.kind.token}'}):')
+      ..writeln(styles.heading('$verb ${rcFile.path} '
+          '(${shell.shellPath ?? 'no \$SHELL set, assuming '
+              '${shell.kind.token}'}):'))
       ..writeln()
-      ..writeln('  $line')
+      ..writeln('  ${styles.command(line)}')
       ..writeln()
-      ..writeln('It has to go ahead of anything else that puts a dart on '
-          'PATH, and it only takes effect in shells started after you save '
-          'the file.')
+      ..writeln(styles.detail(
+        'It has to go ahead of anything else that puts a dart on '
+        'PATH, and it only takes effect in shells started after you save '
+        'the file.',
+      ))
       ..writeln();
 
     // Only for a shell with a startup file dvm can name: the PowerShell and
@@ -352,20 +369,24 @@ class SetupCommand extends Command<int> {
       // next step would send the user to a guaranteed no-op. The shadow comes
       // first; the flag is what to run once it is gone.
       context.out
-        ..writeln('dvm could add that line for you, but not yet: something in '
-            'your startup files would beat it, or dvm could not read a file '
-            'that might — see the warnings below.')
-        ..writeln('Clear that first and start a new shell, then run: '
-            'dvm setup --write-path-line');
+        ..writeln(styles.detail(
+          'dvm could add that line for you, but not yet: something in '
+          'your startup files would beat it, or dvm could not read a file '
+          'that might — see the warnings below.',
+        ))
+        ..writeln('${styles.detail('Clear that first and start a new shell, '
+                'then run: ')}'
+            '${styles.command('dvm setup --write-path-line')}');
       _explainOmittedBinDir(directories, binary);
       return;
     }
 
     context.out
-      ..writeln('Or let dvm add it for you: dvm setup --write-path-line')
-      ..writeln('It backs ${rcFile.path} up before touching '
+      ..writeln('${styles.detail('Or let dvm add it for you: ')}'
+          '${styles.command('dvm setup --write-path-line')}')
+      ..writeln(styles.detail('It backs ${rcFile.path} up before touching '
           'it, and '
-          'dvm setup --remove-path-line takes the line back out.');
+          'dvm setup --remove-path-line takes the line back out.'));
     _explainOmittedBinDir(directories, binary);
   }
 
@@ -384,16 +405,23 @@ class SetupCommand extends Command<int> {
     File binary, {
     required bool blocked,
   }) {
+    final styles = context.styles;
     final editor = _editorFor(shell, directories, guardGuessedRcFile: true);
     if (editor == null) return false;
 
     if (blocked) {
+      // A refusal that makes `setup` exit 1: coloured like a doctor FAIL,
+      // because it is the same news.
       context.err
-        ..writeln('Not writing the PATH line: something in your startup files '
-            'would beat it, or dvm could not read a file that might. A shell '
-            'function or alias is resolved before PATH is ever searched, so '
-            'the line would change nothing while looking like it worked.')
-        ..writeln('Sort out the warnings below, then run this again.');
+        ..writeln(styles.fail(
+          'Not writing the PATH line: something in your startup files '
+          'would beat it, or dvm could not read a file that might. A shell '
+          'function or alias is resolved before PATH is ever searched, so '
+          'the line would change nothing while looking like it worked.',
+        ))
+        ..writeln(styles.detail(
+          'Sort out the warnings below, then run this again.',
+        ));
       return false;
     }
 
@@ -401,25 +429,27 @@ class SetupCommand extends Command<int> {
     switch (result.outcome) {
       case PathLineOutcome.alreadyPresent:
         context.out.writeln(
-          '${editor.rcFile.path} already puts '
-          '${context.paths.shimsDir.path} on PATH '
-          '(line ${result.line}), so there is nothing to add.',
+          styles.ok('${editor.rcFile.path} already puts '
+              '${context.paths.shimsDir.path} on PATH '
+              '(line ${result.line}), so there is nothing to add.'),
         );
         _reportPathLineNotInEffect(shell, editor.rcFile);
       case PathLineOutcome.created:
         context.out
-          ..writeln('Created ${editor.rcFile.path} with:')
+          ..writeln(styles.heading('Created ${editor.rcFile.path} with:'))
           ..writeln()
-          ..writeln('  ${editor.line}');
+          ..writeln('  ${styles.command(editor.line)}');
         _explainNextShell(editor);
         _explainOmittedBinDir(directories, binary);
       case PathLineOutcome.written:
         context.out
-          ..writeln('Backed up ${editor.rcFile.path} '
-              '-> ${result.backup!.path}')
-          ..writeln('Added this line to ${editor.rcFile.path}:')
+          ..writeln(styles.detail('Backed up ${editor.rcFile.path} '
+              '-> ${result.backup!.path}'))
+          ..writeln(
+            styles.heading('Added this line to ${editor.rcFile.path}:'),
+          )
           ..writeln()
-          ..writeln('  ${editor.line}');
+          ..writeln('  ${styles.command(editor.line)}');
         _explainNextShell(editor);
         _explainOmittedBinDir(directories, binary);
       case PathLineOutcome.removed:
@@ -438,31 +468,43 @@ class SetupCommand extends Command<int> {
   /// withheld is the confident file name and the offer of
   /// `--write-path-line`, which would decline in this state anyway.
   void _printAmbiguousRcFile(ShellFacts shell, File rcFile, String line) {
+    final styles = context.styles;
     final said = shell.shellPath;
     context.out
-      ..writeln(said == null
+      ..writeln(styles.warn(said == null
           ? '\$SHELL is not set, so dvm cannot tell which startup file your '
               'shell reads.'
           : '\$SHELL says $said, which dvm does not recognise, so it cannot '
-              'tell which startup file your shell reads.')
-      ..writeln('These are here, and they belong to different shells:')
+              'tell which startup file your shell reads.'))
+      ..writeln(styles.detail(
+        'These are here, and they belong to different shells:',
+      ))
       ..writeln()
-      ..writeln('  ${rcFile.path}  (${shell.kind.token}, what dvm would have '
-          'assumed)');
+      ..writeln(styles.detail(
+        '  ${rcFile.path}  (${shell.kind.token}, what dvm would have '
+        'assumed)',
+      ));
     for (final other in shell.otherShellRcFiles) {
-      context.out.writeln('  ${other.file.path}  (${other.shell.token})');
+      context.out.writeln(
+        styles.detail('  ${other.file.path}  (${other.shell.token})'),
+      );
     }
     context.out
       ..writeln()
-      ..writeln('Add this line to the one your shell actually reads:')
+      ..writeln(
+        styles.heading('Add this line to the one your shell actually reads:'),
+      )
       ..writeln()
-      ..writeln('  $line')
+      ..writeln('  ${styles.command(line)}')
       ..writeln()
-      ..writeln('It has to go ahead of anything else that puts a dart on PATH, '
-          'and it only takes effect in shells started after you save the file.')
+      ..writeln(styles.detail(
+        'It has to go ahead of anything else that puts a dart on PATH, '
+        'and it only takes effect in shells started after you save the file.',
+      ))
       ..writeln()
-      ..writeln('Or name your shell and let dvm do it: '
-          'SHELL=<your shell> dvm setup --write-path-line');
+      ..writeln('${styles.detail('Or name your shell and let dvm do it: ')}'
+          '${styles.command('SHELL=<your shell> dvm setup '
+              '--write-path-line')}');
   }
 
   /// Refuses to write, because the file dvm would write to is a guess the home
@@ -479,6 +521,7 @@ class SetupCommand extends Command<int> {
     File rcFile,
     List<Directory> directories,
   ) {
+    final styles = context.styles;
     final said = shell.shellPath;
     final others = shell.otherShellRcFiles;
     // The first one is the best suggestion: [ShellFacts] lists a shell's
@@ -486,32 +529,45 @@ class SetupCommand extends Command<int> {
     final suggestion = others.first.shell;
 
     context.err
-      ..writeln('Not writing the PATH line: dvm cannot tell which startup file '
-          'your shell reads.')
+      ..writeln(styles.fail(
+        'Not writing the PATH line: dvm cannot tell which startup file '
+        'your shell reads.',
+      ))
       ..writeln()
-      ..writeln(said == null
+      ..writeln(styles.detail(said == null
           ? '\$SHELL is not set, so dvm assumed ${shell.kind.token} and would '
               'have written to ${rcFile.path}.'
           : '\$SHELL says $said, which dvm does not recognise, so it assumed '
-              '${shell.kind.token} and would have written to ${rcFile.path}.')
-      ..writeln('But these startup files are here too, and they belong to a '
-          'shell that does not read it:')
+              '${shell.kind.token} and would have written to ${rcFile.path}.'))
+      ..writeln(styles.detail(
+        'But these startup files are here too, and they belong to a '
+        'shell that does not read it:',
+      ))
       ..writeln();
     for (final other in others) {
-      context.err.writeln('  ${other.file.path}  (${other.shell.token})');
+      context.err.writeln(
+        styles.detail('  ${other.file.path}  (${other.shell.token})'),
+      );
     }
     context.err
       ..writeln()
-      ..writeln('Writing to ${rcFile.path} would look like it worked and put '
-          'nothing on your PATH.')
+      ..writeln(styles.detail(
+        'Writing to ${rcFile.path} would look like it worked and put '
+        'nothing on your PATH.',
+      ))
       ..writeln()
-      ..writeln('Name your shell and run this again:')
+      ..writeln(styles.heading('Name your shell and run this again:'))
       ..writeln()
-      ..writeln('  SHELL=${suggestion.token} dvm setup --write-path-line')
+      ..writeln(
+        '  ${styles.command('SHELL=${suggestion.token} dvm setup '
+            '--write-path-line')}',
+      )
       ..writeln()
-      ..writeln('Or add this line to the startup file you actually use:')
+      ..writeln(styles.heading(
+        'Or add this line to the startup file you actually use:',
+      ))
       ..writeln()
-      ..writeln('  ${shell.pathLine(directories)}');
+      ..writeln('  ${styles.command(shell.pathLine(directories))}');
   }
 
   /// Says so when a PATH line that is already in the file is not in effect.
@@ -529,33 +585,43 @@ class SetupCommand extends Command<int> {
   /// are named, and the startup files belonging to another shell are listed
   /// when there are any, because that is the evidence pointing at the second.
   void _reportPathLineNotInEffect(ShellFacts shell, File rcFile) {
+    final styles = context.styles;
     final shims = context.paths.shimsDir;
     if (shell.isOnPath(shims)) return;
 
     context.err
       ..writeln()
-      ..writeln('WARNING: that line is not in effect. ${shims.path} is not on '
-          'the PATH of this shell, so `dart` does not go through dvm right now '
-          'and `dvm doctor` reports it as a problem.')
-      ..writeln('Either no new shell has been started since that line was '
-          'added, or your shell does not read ${rcFile.path}.');
+      ..writeln(styles.warn(
+        'WARNING: that line is not in effect. ${shims.path} is not on '
+        'the PATH of this shell, so `dart` does not go through dvm right now '
+        'and `dvm doctor` reports it as a problem.',
+      ))
+      ..writeln(styles.detail(
+        'Either no new shell has been started since that line was '
+        'added, or your shell does not read ${rcFile.path}.',
+      ));
     for (final other in shell.otherShellRcFiles) {
-      context.err.writeln('  ${other.file.path} is here too, and '
-          '${other.shell.token} does not read ${rcFile.path}.');
+      context.err.writeln(styles.detail('  ${other.file.path} is here too, and '
+          '${other.shell.token} does not read ${rcFile.path}.'));
     }
-    context.err.writeln('Check with: dvm doctor');
+    context.err.writeln('${styles.detail('Check with: ')}'
+        '${styles.command('dvm doctor')}');
   }
 
   void _explainNextShell(PathLineEditor editor) {
+    final styles = context.styles;
     context.out
       ..writeln()
-      ..writeln('It takes effect in shells started after this. For the one '
-          'you are in: source ${editor.rcFile.path}')
-      ..writeln('Undo it with: dvm setup --remove-path-line');
+      ..writeln('${styles.detail('It takes effect in shells started after '
+              'this. For the one you are in: ')}'
+          '${styles.command('source ${editor.rcFile.path}')}')
+      ..writeln('${styles.detail('Undo it with: ')}'
+          '${styles.command('dvm setup --remove-path-line')}');
   }
 
   /// Takes dvm's PATH line back out. Returns the command's exit code.
   int _removePathLine() {
+    final styles = context.styles;
     final shell = _shell();
     // The shims directory alone: removal matches on dvm's markers and on the
     // shims path, never on [PathLineEditor.line], so there is no binary to
@@ -568,28 +634,32 @@ class SetupCommand extends Command<int> {
     switch (result.outcome) {
       case PathLineOutcome.removed:
         context.out
-          ..writeln('Backed up ${editor.rcFile.path} '
-              '-> ${result.backup!.path}')
-          ..writeln('Removed dvm\'s PATH line from '
-              '${editor.rcFile.path}.')
-          ..writeln('Shells started after this will no longer find the shims. '
-              'The shims themselves are still in '
-              '${context.paths.shimsDir.path}.');
+          ..writeln(styles.detail('Backed up ${editor.rcFile.path} '
+              '-> ${result.backup!.path}'))
+          ..writeln(styles.heading('Removed dvm\'s PATH line from '
+              '${editor.rcFile.path}.'))
+          ..writeln(styles.detail(
+            'Shells started after this will no longer find the shims. '
+            'The shims themselves are still in '
+            '${context.paths.shimsDir.path}.',
+          ));
       case PathLineOutcome.foreign:
         // Reported rather than removed, and still a success: the file is in
         // the state the user put it in, and the one thing dvm knows for sure
         // is that it did not write this line.
         context.out
-          ..writeln('${editor.rcFile.path} puts '
+          ..writeln(styles.warn('${editor.rcFile.path} puts '
               '${context.paths.shimsDir.path} on PATH at '
               'line ${result.line}, but dvm did not write that line — there '
-              'are no dvm markers around it — so it has been left as it is.')
-          ..writeln('Remove it by hand if you want it gone.');
+              'are no dvm markers around it — so it has been left as it is.'))
+          ..writeln(
+            styles.detail('Remove it by hand if you want it gone.'),
+          );
       case PathLineOutcome.absent:
         context.out.writeln(
-          'There is no dvm PATH line in '
-          '${editor.rcFile.path}, '
-          'so there is nothing to remove.',
+          styles.ok('There is no dvm PATH line in '
+              '${editor.rcFile.path}, '
+              'so there is nothing to remove.'),
         );
       case PathLineOutcome.written:
       case PathLineOutcome.created:
@@ -611,13 +681,16 @@ class SetupCommand extends Command<int> {
     List<Directory> directories, {
     bool guardGuessedRcFile = false,
   }) {
+    final styles = context.styles;
     if (shell.kind == ShellKind.powershell) {
       context.err
-        ..writeln('PowerShell takes PATH from your environment rather than '
-            'from a startup file, so there is no line for dvm to write. Run '
-            'this once instead:')
+        ..writeln(styles.detail(
+          'PowerShell takes PATH from your environment rather than '
+          'from a startup file, so there is no line for dvm to write. Run '
+          'this once instead:',
+        ))
         ..writeln()
-        ..writeln('  ${shell.pathLine(directories)}');
+        ..writeln('  ${styles.command(shell.pathLine(directories))}');
       return null;
     }
 
@@ -627,10 +700,12 @@ class SetupCommand extends Command<int> {
       // Guessing at a path here is how dvm would write to somewhere nobody
       // reads, so name the line and let the user place it.
       context.err
-        ..writeln('Neither \$HOME nor \$USERPROFILE is set, so dvm cannot tell '
-            'which startup file is yours. Add this line to it yourself:')
+        ..writeln(styles.warn(
+          'Neither \$HOME nor \$USERPROFILE is set, so dvm cannot tell '
+          'which startup file is yours. Add this line to it yourself:',
+        ))
         ..writeln()
-        ..writeln('  ${shell.pathLine(directories)}');
+        ..writeln('  ${styles.command(shell.pathLine(directories))}');
       return null;
     }
 
@@ -661,6 +736,7 @@ class SetupCommand extends Command<int> {
   /// PATH, so without this warning the user installs dvm, types `dvm`, and gets
   /// the other tool with nothing to explain why.
   bool _reportConflicts(ShellScan scan) {
+    final styles = context.styles;
     final legacy = LegacyDvmInstall.detect(context.paths);
     var found = false;
 
@@ -668,14 +744,18 @@ class SetupCommand extends Command<int> {
       found = true;
       context.err
         ..writeln()
-        ..writeln('WARNING: your shell defines its own `dvm`, which will win '
-            'over the binary you just set up — a shell function or alias is '
-            'resolved before PATH is ever searched.');
+        ..writeln(styles.warn(
+          'WARNING: your shell defines its own `dvm`, which will win '
+          'over the binary you just set up — a shell function or alias is '
+          'resolved before PATH is ever searched.',
+        ));
       for (final shadow in scan.shadows) {
-        context.err.writeln('  ${shadow.describe()}');
+        context.err.writeln(styles.detail('  ${shadow.describe()}'));
       }
       context.err.writeln(
-        'Remove or comment out the line(s) above, then start a new shell.',
+        styles.detail(
+          'Remove or comment out the line(s) above, then start a new shell.',
+        ),
       );
     }
 
@@ -684,8 +764,10 @@ class SetupCommand extends Command<int> {
       // exactly the one with the function in it.
       found = true;
       context.err.writeln(
-        'WARNING: could not read ${entry.key} (${entry.value}), so dvm cannot '
-        'say whether it defines a conflicting `dvm`.',
+        styles.warn(
+          'WARNING: could not read ${entry.key} (${entry.value}), so dvm '
+          'cannot say whether it defines a conflicting `dvm`.',
+        ),
       );
     }
 
@@ -693,16 +775,17 @@ class SetupCommand extends Command<int> {
       found = true;
       context.err
         ..writeln()
-        ..writeln('WARNING: an older dvm (cbracken/dvm) shares '
-            '${context.paths.home.path}:');
+        ..writeln(styles.warn('WARNING: an older dvm (cbracken/dvm) shares '
+            '${context.paths.home.path}:'));
       if (legacy.script case final script?) {
-        context.err.writeln('  ${script.path}  '
-            '(the shell function it defines)');
+        context.err.writeln(styles.detail('  ${script.path}  '
+            '(the shell function it defines)'));
       }
       for (final directory in legacy.directories) {
-        context.err.writeln('  ${directory.path}');
+        context.err.writeln(styles.detail('  ${directory.path}'));
       }
-      context.err.writeln('Import its SDKs with: dvm migrate');
+      context.err.writeln('${styles.detail('Import its SDKs with: ')}'
+          '${styles.command('dvm migrate')}');
     }
 
     return found;

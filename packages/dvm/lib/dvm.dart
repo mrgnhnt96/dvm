@@ -28,6 +28,7 @@ import 'src/core/exceptions.dart';
 import 'src/core/installer.dart';
 import 'src/core/process.dart';
 import 'src/core/releases.dart';
+import 'src/core/style.dart';
 import 'src/core/updater.dart';
 import 'src/core/verbose.dart';
 import 'src/gen/version.dart';
@@ -42,6 +43,7 @@ export 'src/core/platform.dart';
 export 'src/core/process.dart';
 export 'src/core/releases.dart';
 export 'src/core/resolver.dart';
+export 'src/core/style.dart';
 export 'src/core/updater.dart';
 export 'src/core/verbose.dart';
 export 'src/gen/version.dart';
@@ -88,6 +90,12 @@ Future<int> run(
     enabled: VerboseLog.enabledIn(env),
   );
 
+  // Built here for the same reason: the composition root is the only place
+  // that knows whether [output] is a real terminal. `--color` is a flag, so it
+  // cannot be read this early — [DvmCommandRunner.runCommand] applies it to
+  // this same object once the parser has run.
+  final styles = Styles(environment: env, outIsTerminal: terminal);
+
   final context = DvmContext.wire(
     fileSystem: fileSystem ?? const LocalFileSystem(),
     environment: env,
@@ -99,6 +107,7 @@ Future<int> run(
     // found on PATH, and `dvm update` has to rename over a real path.
     executablePath: executablePath ?? Platform.resolvedExecutable,
     verbose: verbose,
+    styles: styles,
     releases: releases,
     installer: installer,
     processes: processes,
@@ -151,6 +160,18 @@ class DvmCommandRunner extends CommandRunner<int> {
         negatable: false,
         help: 'Explain what dvm is doing, on stderr. '
             'Also enabled by ${VerboseLog.variable}=1.',
+      )
+      // Beside `-v` and top-level for the same reason: every subcommand
+      // inherits it, and `dvm --help` is where somebody finds it. `always` is
+      // what you pass when piping into `less -R`; see [Styles.enabled] for the
+      // precedence between this and NO_COLOR.
+      ..addOption(
+        ColorMode.flag,
+        allowed: ColorMode.tokens,
+        defaultsTo: ColorMode.auto.name,
+        valueHelp: 'when',
+        help: 'Colour the output. `auto` colours only a terminal, and honours '
+            'NO_COLOR and TERM=dumb; `always` overrides both.',
       );
 
     addCommand(InstallCommand(context: context));
@@ -182,6 +203,10 @@ class DvmCommandRunner extends CommandRunner<int> {
     // First, before anything can decide anything: a run asked to explain
     // itself has to explain the whole run, including the version check below.
     if (topLevelResults.flag('verbose')) context.verbose.enable();
+    // Before anything prints. The environment answer is already baked in; this
+    // is the flag having its say over it.
+    context.styles.setMode(
+        ColorMode.values.byName(topLevelResults.option(ColorMode.flag)!));
     context.verbose.log(
       VerboseArea.cli,
       () => 'dvm ${version()} in ${context.workingDirectory.path}',

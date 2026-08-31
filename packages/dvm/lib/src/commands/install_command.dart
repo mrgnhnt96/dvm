@@ -49,9 +49,14 @@ class InstallCommand extends Command<int> {
     final target = await _resolve(requested);
 
     if (!force && context.installer.isInstalled(target.version)) {
+      // A RESULT line: bold, like the one at the bottom of a real install.
+      // The two answer the same question, so they must not read as two
+      // different kinds of line.
       context.out.writeln(
-        'Dart ${target.version} is already installed at '
-        '${context.display(context.paths.versionDir(target.version).path)}',
+        context.styles.heading(
+          'Dart ${target.version} is already installed at '
+          '${context.display(context.paths.versionDir(target.version).path)}',
+        ),
       );
       _recordChannel(target);
       return 0;
@@ -64,8 +69,10 @@ class InstallCommand extends Command<int> {
     );
 
     _recordChannel(target);
-    context.out.writeln('Installed Dart ${target.version} to '
-        '${context.display(directory.path)}');
+    context.out.writeln(
+      context.styles.heading('Installed Dart ${target.version} to '
+          '${context.display(directory.path)}'),
+    );
     return 0;
   }
 

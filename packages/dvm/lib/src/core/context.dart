@@ -8,6 +8,7 @@ import 'platform.dart';
 import 'process.dart';
 import 'releases.dart';
 import 'resolver.dart';
+import 'style.dart';
 import 'updater.dart';
 import 'verbose.dart';
 
@@ -40,6 +41,7 @@ class DvmContext {
     required this.err,
     required this.outIsTerminal,
     required this.verbose,
+    required this.styles,
   });
 
   /// Builds a context from the pieces that vary, wiring up the rest.
@@ -56,6 +58,7 @@ class DvmContext {
     bool outIsTerminal = false,
     String executablePath = '',
     VerboseLog? verbose,
+    Styles? styles,
     ReleaseClient? releases,
     Installer? installer,
     ProcessRunner? processes,
@@ -67,6 +70,12 @@ class DvmContext {
     // it in [DvmCommandRunner], after this point.
     final log = verbose ??
         VerboseLog(sink: err, enabled: VerboseLog.enabledIn(environment));
+    // Same shape as [log] above, and for the same reason: a context wired by a
+    // test can style without every test having to say so. It starts from the
+    // environment and the sink; `dvm --color=…` moves it in
+    // [DvmCommandRunner.runCommand], after this point.
+    final style = styles ??
+        Styles(environment: environment, outIsTerminal: outIsTerminal);
 
     final paths = DvmPaths(fileSystem: fileSystem, environment: environment);
     final config =
@@ -99,6 +108,7 @@ class DvmContext {
             // Download progress is normal output, not a diagnostic.
             progress: out,
             progressIsTerminal: outIsTerminal,
+            styles: style,
             verbose: log,
           ),
       processes: processes ?? createProcessRunner(verbose: log),
@@ -114,6 +124,7 @@ class DvmContext {
       err: err,
       outIsTerminal: outIsTerminal,
       verbose: log,
+      styles: style,
     );
   }
 
@@ -159,6 +170,15 @@ class DvmContext {
   /// holding every percentage it ever printed. Defaults to false: a sink whose
   /// nature is unknown gets the output that is readable either way.
   final bool outIsTerminal;
+
+  /// How output is STYLED: which spans are coloured, dimmed or bolded, and
+  /// whether any of that happens at all.
+  ///
+  /// Beside [display] on purpose. Path rendering already has exactly one place
+  /// that decides how a path is printed; this is the same idea for how a line
+  /// is emphasised, so the palette is changeable in one file and `ok` cannot be
+  /// green in one command and bold-green in the next.
+  final Styles styles;
 
   /// The directory commands act relative to — `.dvmrc` lookup starts here.
   Directory get workingDirectory => fileSystem.currentDirectory;

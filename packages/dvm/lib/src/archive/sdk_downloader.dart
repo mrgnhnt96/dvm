@@ -5,6 +5,7 @@ import 'package:file/file.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/releases.dart';
+import '../core/style.dart';
 import '../core/verbose.dart';
 import 'dart_archive_exception.dart';
 import 'progress_bar.dart';
@@ -19,11 +20,13 @@ class SdkDownloader {
     required this.fileSystem,
     required StringSink progress,
     bool progressIsTerminal = false,
+    Styles? styles,
     http.Client? httpClient,
     VerboseLog? verbose,
   })  : _injectedHttp = httpClient,
         _progress = progress,
         _progressIsTerminal = progressIsTerminal,
+        _styles = styles ?? Styles(),
         _verbose = verbose ?? VerboseLog.disabled;
 
   final FileSystem fileSystem;
@@ -36,6 +39,7 @@ class SdkDownloader {
   /// that can honestly answer this.
   final bool _progressIsTerminal;
 
+  final Styles _styles;
   final http.Client? _injectedHttp;
   final VerboseLog _verbose;
 
@@ -153,6 +157,7 @@ class SdkDownloader {
     final total = response.contentLength;
     final bar = ProgressBar(
       sink: _progress,
+      styles: _styles,
       label: destination.basename,
       total: total,
       isTerminal: _progressIsTerminal,
