@@ -264,9 +264,5 @@ class DvmCommandRunner extends CommandRunner<int> {
   }
 }
 
-/// The version of this build of dvm, including its build tag when it has one.
-///
-/// `buildVersion` itself lives in `src/gen/version.dart`, beside the two
-/// constants it joins, because the updater needs it as well and cannot import
-/// this library. It is exported from here, so callers see no difference.
-String version() => buildVersion(kVersion, kBuildTag);
+/// The version of this build of dvm.
+String version() => kVersion;

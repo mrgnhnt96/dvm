@@ -147,13 +147,6 @@
 # real packages and uploads release artifacts.
 "tool/stamp_version.sh":
   - "bash -n tool/stamp_version.sh"
-# Only the alpha build calls this, so nothing in the Dart suite exercises it. The
-# syntax check is what CI runs; the behaviour it guards (kBuildTag stays empty in
-# the checkout) is asserted from Dart in test/release/version_stamp_test.dart,
-# which the packages/dvm rule above already runs.
-"tool/stamp_build_tag.sh":
-  - "bash -n tool/stamp_build_tag.sh"
-  - "cd packages/dvm && dart test test/release/version_stamp_test.dart"
 "tool/package_release_assets.sh":
   - "bash -n tool/package_release_assets.sh"
 

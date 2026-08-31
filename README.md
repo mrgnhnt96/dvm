@@ -33,31 +33,6 @@ the shim afterwards, `dvm doctor` names the entry that is winning. See
 for the details, including the `export PATH=...` line that discards everything
 above it.
 
-### The alpha channel
-
-To install the latest `main` instead of the newest release:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | sh -s -- --alpha
-```
-
-The `-s --` is what tells `sh` that `--alpha` belongs to the script and not to
-`sh` itself; without it the option is silently claimed by the wrong program.
-
-This installs the rolling `alpha` prerelease, which is rebuilt and republished
-from `main` on every push. It is unreleased code that nobody chose to publish, so
-it is the right thing to run when you need a fix that has landed but not shipped,
-and the wrong thing to run otherwise. An alpha reports itself with a build-tag
-suffix — `dvm --version` prints something like `dvm 0.2.0+alpha.g1a2b3c4` — so
-you can tell later what you are running.
-
-Once you are on an alpha you do not need the installer again. `dvm update --alpha`
-moves you to the newest one, and `dvm update --stable` takes you back to the newest
-release. Both flags are per-invocation and remember nothing: a bare `dvm update`
-still means "the newest release", and it will not silently swap an alpha for a
-release that is not actually ahead of it — it says so and names both flags instead.
-A plain install can never resolve to an alpha, with or without `--alpha`.
-
 ## Pin a project
 
 [`dvm install`](https://dvm.mrgnhnt.com/commands/install) puts an SDK in the

@@ -142,63 +142,28 @@ check "dev-suffixed tag is skipped when the flag is true" "" "$(
   releases "$(release v0.1.0-dev false true "${asset}")" | pick_tag "${asset}"
 )"
 
-# --- picking a release, by channel --------------------------------------------
+# --- a prerelease is never picked ---------------------------------------------
 #
-# `install.sh --alpha` is the alpha channel and everything else is the stable
-# one. THE SAME FIXTURE ANSWERS BOTH, deliberately: two filters that happen to
-# agree on two different inputs prove nothing about the CHOICE, and the shape
-# below is the shape the repo is actually in — a stable release, with a
-# prerelease built from main sitting newer than it.
+# pick_tag resolves to published releases and to nothing else. There is no flag
+# that widens it, so the only thing to prove is that a prerelease sitting NEWER
+# than the newest release does not win — which is the shape a repo is in
+# whenever a release candidate is up.
 mixed="$(releases \
-  "$(release alpha false true "${asset}")" \
+  "$(release v0.3.0-rc.1 false true "${asset}")" \
   "$(release v0.2.0 false false "${asset}")")"
 
-check "stable channel picks the release from a mixed page" "v0.2.0" \
+check "the release is picked over a newer prerelease" "v0.2.0" \
   "$(printf '%s' "${mixed}" | pick_tag "${asset}")"
-check "alpha channel picks the prerelease from the SAME page" "alpha" \
-  "$(printf '%s' "${mixed}" | pick_tag "${asset}" alpha)"
-check "the channel defaults to stable when it is not named" "v0.2.0" \
-  "$(printf '%s' "${mixed}" | pick_tag "${asset}" stable)"
 
 # THE REGRESSION GUARD FOR THE DEFAULT PATH, as its own case rather than as a
 # side effect of the mixed page above: a page with nothing on it but prereleases
-# must give the stable channel NOTHING. A fallback here would install unreleased
-# code on a machine that never asked for it, under a success message.
-check "stable channel never falls back to a prerelease" "" "$(
+# must give NOTHING. A fallback here would install unreleased code on a machine
+# that never asked for it, under a success message.
+check "never falls back to a prerelease" "" "$(
   releases \
-    "$(release alpha false true "${asset}")" \
+    "$(release v0.3.0-rc.1 false true "${asset}")" \
     "$(release v0.9.0-beta false true "${asset}")" \
     | pick_tag "${asset}"
-)"
-
-# The mirror image, and the reason install.sh turns an empty answer into a
-# refusal: --alpha asked for main, and the newest release is not main.
-check "alpha channel never falls back to a release" "" "$(
-  releases "$(release v0.2.0 false false "${asset}")" | pick_tag "${asset}" alpha
-)"
-
-check "alpha channel skips a DRAFT prerelease" "alpha" "$(
-  releases \
-    "$(release alpha-unfinished true true "${asset}")" \
-    "$(release alpha false true "${asset}")" \
-    | pick_tag "${asset}" alpha
-)"
-
-check "alpha channel skips a prerelease without our asset" "alpha" "$(
-  releases \
-    "$(release alpha-other false true "dvm-linux-x64.zip")" \
-    "$(release alpha false true "${asset}")" \
-    | pick_tag "${asset}" alpha
-)"
-
-check "alpha channel on an empty list gives nothing" "" \
-  "$(printf '[]' | pick_tag "${asset}" alpha)"
-
-# Refused rather than defaulted. The tempting default is "stable", which would
-# turn a typo in some future caller into a silent channel switch.
-check "an unknown channel is refused, not defaulted" "REFUSED" "$(
-  (printf '%s' "${mixed}" | pick_tag "${asset}" nightly) 2> /dev/null \
-    || echo "REFUSED"
 )"
 
 # --- picking a release, as GitHub ACTUALLY sends it ---------------------------
@@ -286,17 +251,15 @@ check "pretty: nothing matching gives nothing" "" "$(
     | pick_tag "${asset}"
 )"
 
-# The channel split, against the response shape GitHub actually sends. The `tr`
-# in pick_tag is shared by both channels, so a regression there would break the
-# alpha exactly as invisibly as it once broke the stable path.
+# The prerelease filter, against the response shape GitHub actually sends: a
+# regression in the `tr` would break it exactly as invisibly as it once broke
+# the asset filter.
 mixed_pretty="$(releases_pretty \
-  "$(release_pretty alpha false true "${asset}")" \
+  "$(release_pretty v0.3.0-rc.1 false true "${asset}")" \
   "$(release_pretty v0.2.0 false false "${asset}")")"
 
-check "pretty: stable channel picks the release" "v0.2.0" \
+check "pretty: the release is picked over a newer prerelease" "v0.2.0" \
   "$(printf '%s' "${mixed_pretty}" | pick_tag "${asset}")"
-check "pretty: alpha channel picks the prerelease from the SAME page" "alpha" \
-  "$(printf '%s' "${mixed_pretty}" | pick_tag "${asset}" alpha)"
 
 # --- installing, end to end ---------------------------------------------------
 
@@ -833,16 +796,15 @@ rm -rf "${fromdir}"
 # --- the real script, invoked the way a user invokes it ------------------------
 #
 # Everything above calls install.sh's functions IN THIS PROCESS, which cannot
-# answer the one question a pasted command depends on: does the option survive
-# the invocation? `sh install.sh --alpha` and `curl … | sh -s -- --alpha` reach
-# the script by different routes, and the piped one — the documented one, the one
-# people actually paste — is the one most likely to break, because the `-s --` is
-# sh's syntax rather than this script's.
+# answer the one question a pasted command depends on: does the invocation
+# itself work? `sh install.sh` and `curl … | sh` reach the script by different
+# routes, and the piped one — the documented one, the one people actually paste
+# — is the one most likely to break.
 #
 # So this runs install.sh as a SUBPROCESS with a fake `curl` first on PATH. Two
 # things make that a real test rather than a stub:
 #
-#   - the fake serves the releases page from a fixture, so the channel filter
+#   - the fake serves the releases page from a fixture, so the prerelease filter
 #     runs on JSON rather than on a mock of pick_tag, and
 #   - it serves each asset from a directory named after the TAG in the download
 #     URL, and the two tags' binaries differ in their contents. A run that
@@ -851,9 +813,9 @@ rm -rf "${fromdir}"
 if ! command -v zip > /dev/null 2>&1; then
   echo "skip real-invocation checks: no zip on this machine"
 else
-  # The earlier sections leave DVM_VERSION exported, and --alpha refuses to run
-  # alongside it. Cleared here rather than assumed, because which of those blocks
-  # ran at all depends on what is installed on the machine.
+  # The earlier sections leave DVM_VERSION exported, and it would pin every run
+  # below to one tag. Cleared here rather than assumed, because which of those
+  # blocks ran at all depends on what is installed on the machine.
   unset DVM_VERSION || true
 
   # THE HOST'S REAL TARGET, not a faked one: this subprocess runs the real
@@ -873,7 +835,7 @@ else
     mkdir -p "${cli_bin}"
 
     # One asset per tag, each binary saying which tag it came from.
-    for cli_tag in alpha v0.2.0; do
+    for cli_tag in v0.3.0-rc.1 v0.2.0; do
       mkdir -p "${cli_assets}/${cli_tag}/build"
       printf '#!/bin/sh\necho dvm from %s\n' "${cli_tag}" \
         > "${cli_assets}/${cli_tag}/build/dvm"
@@ -933,14 +895,12 @@ esac
 FAKECURL
     chmod 755 "${cli_bin}/curl"
 
-    # A page with both channels on it, the prerelease newer — main's real shape.
+    # A page with a prerelease sitting NEWER than the release, which is the
+    # shape a repo is in whenever a release candidate is up.
     releases \
-      "$(release alpha false true "${cli_asset}")" \
+      "$(release v0.3.0-rc.1 false true "${cli_asset}")" \
       "$(release v0.2.0 false false "${cli_asset}")" \
       > "${cli_dir}/both.json"
-    # ...and a page with no prerelease at all, for the refusal.
-    releases "$(release v0.2.0 false false "${cli_asset}")" \
-      > "${cli_dir}/stable-only.json"
 
     cli_home="${cli_dir}/home"
     mkdir -p "${cli_home}"
@@ -980,11 +940,11 @@ FAKECURL
 
     # cli_run_piped <dvm-home-name> <releases-fixture> [args...]
     #
-    # THE DOCUMENTED SPELLING. `sh -s -- --alpha` is what the README's curl line
-    # becomes once it is given an option, and it is a different path from
-    # `sh install.sh --alpha`: sh reads the script from stdin, and `--` is what
-    # stops sh from claiming the option for itself. Piped from a file rather than
-    # from the network, which is the only part that is faked.
+    # THE DOCUMENTED SPELLING. `sh -s --` is what the README's curl line becomes
+    # once it is given an option, and it is a different path from `sh
+    # install.sh`: sh reads the script from stdin, and `--` is what stops sh from
+    # claiming the option for itself. Piped from a file rather than from the
+    # network, which is the only part that is faked.
     cli_run_piped() {
       cli_run_home="${cli_dir}/$1"
       cli_run_json="${cli_dir}/$2"
@@ -1002,48 +962,12 @@ FAKECURL
       return 0
     }
 
-    # --- sh install.sh --alpha ------------------------------------------------
-
-    cli_run alpha-direct both.json --alpha
-
-    check "--alpha exits 0" "0" "${cli_status}"
-    check "--alpha installs the binary" "0" \
-      "$([ -x "${cli_dir}/alpha-direct/bin/dvm" ] && echo 0 || echo 1)"
-    # THE BYTES, not the message: this is what proves the alpha TAG drove the
-    # download rather than the stable one.
-    check "--alpha installed the prerelease's asset" "0" \
-      "$(grep -q 'from alpha' "${cli_dir}/alpha-direct/bin/dvm" && echo 0 || echo 1)"
-    check "--alpha says which tag it installed" "0" \
-      "$(echo "${cli_out}" | grep -q 'dvm alpha is installed at' && echo 0 || echo 1)"
-    check "--alpha says out loud that it is an alpha" "0" \
-      "$(echo "${cli_out}" | grep -q 'That is an ALPHA build' && echo 0 || echo 1)"
-    check "--alpha names the tag in the notice" "0" \
-      "$(echo "${cli_out}" | grep -q 'installed from tag: alpha' && echo 0 || echo 1)"
-    # The notice has to point at something the user can run LATER, because the
-    # person reading the install output is often not the person who typed the
-    # flag.
-    check "--alpha names the command that reports what is installed" "0" \
-      "$(echo "${cli_out}" \
-        | grep -q "${cli_dir}/alpha-direct/bin/dvm --version" && echo 0 || echo 1)"
-    check "--alpha still prints the setup step" "0" \
-      "$(echo "${cli_out}" | grep -q 'One command finishes the setup' \
-        && echo 0 || echo 1)"
-
-    # --- curl … | sh -s -- --alpha -------------------------------------------
-
-    cli_run_piped alpha-piped both.json --alpha
-
-    check "piped --alpha exits 0" "0" "${cli_status}"
-    check "piped --alpha installed the prerelease's asset" "0" \
-      "$(grep -q 'from alpha' "${cli_dir}/alpha-piped/bin/dvm" && echo 0 || echo 1)"
-    check "piped --alpha says out loud that it is an alpha" "0" \
-      "$(echo "${cli_out}" | grep -q 'That is an ALPHA build' && echo 0 || echo 1)"
-
-    # --- and the same script with no flag, on the SAME fixture ---------------
+    # --- a plain install, end to end -----------------------------------------
     #
-    # THE REGRESSION GUARD FOR THE DEFAULT PATH. The prerelease is right there in
-    # the response and newer than the release; a plain install must not go near
-    # it, and must not mention alphas at all.
+    # THE REGRESSION GUARD FOR THE DEFAULT PATH, and the whole point of the
+    # fixture: the prerelease is right there in the response and NEWER than the
+    # release, and a plain install must not go near it. Asserted on the BYTES
+    # installed rather than on the message that claims them.
 
     cli_run stable-default both.json
 
@@ -1052,30 +976,22 @@ FAKECURL
       "$(grep -q 'from v0.2.0' "${cli_dir}/stable-default/bin/dvm" \
         && echo 0 || echo 1)"
     check "a plain install did not install the prerelease's asset" "1" \
-      "$(grep -q 'from alpha' "${cli_dir}/stable-default/bin/dvm" \
+      "$(grep -q 'from v0.3.0-rc.1' "${cli_dir}/stable-default/bin/dvm" \
         && echo 0 || echo 1)"
-    check "a plain install says nothing about alphas" "1" \
-      "$(echo "${cli_out}" | grep -q 'ALPHA' && echo 0 || echo 1)"
-
-    # --- --alpha with nothing to install ------------------------------------
-
-    cli_run alpha-missing stable-only.json --alpha
-
-    check "--alpha with no prerelease fails" "1" \
-      "$([ "${cli_status}" -eq 0 ] && echo 0 || echo 1)"
-    check "--alpha with no prerelease installs nothing" "1" \
-      "$([ -e "${cli_dir}/alpha-missing/bin/dvm" ] && echo 0 || echo 1)"
-    check "--alpha with no prerelease says what was missing" "0" \
-      "$(echo "${cli_out}" | grep -q 'could not find a published PRERELEASE' \
+    check "a plain install names the tag it installed" "0" \
+      "$(echo "${cli_out}" | grep -q 'dvm v0.2.0 is installed at' \
         && echo 0 || echo 1)"
-    # THE POINT OF THE FAILURE. The stable release is sitting right there in the
-    # same response, and installing it would look like success while answering a
-    # question the user did not ask.
-    check "--alpha with no prerelease does not fall back to the release" "0" \
-      "$(echo "${cli_out}" | grep -q 'deliberately NOT installed' \
+    check "a plain install prints the setup step" "0" \
+      "$(echo "${cli_out}" | grep -q 'One command finishes the setup' \
         && echo 0 || echo 1)"
-    check "--alpha with no prerelease names the plain install" "0" \
-      "$(echo "${cli_out}" | grep -q 'run this again without --alpha' \
+
+    # THE PIPED SPELLING, which is the one the README documents and the one
+    # people actually paste. A different path through sh, on the same fixture.
+    cli_run_piped stable-piped both.json
+
+    check "a piped plain install exits 0" "0" "${cli_status}"
+    check "a piped plain install installed the RELEASE's asset" "0" \
+      "$(grep -q 'from v0.2.0' "${cli_dir}/stable-piped/bin/dvm" \
         && echo 0 || echo 1)"
 
     # --- an unknown flag ------------------------------------------------------
@@ -1109,43 +1025,14 @@ FAKECURL
     check "--help exits 0" "0" "${cli_status}"
     check "--help installs nothing" "1" \
       "$([ -e "${cli_dir}/help/bin/dvm" ] && echo 0 || echo 1)"
-    check "--help documents --alpha" "0" \
-      "$(echo "${cli_out}" | grep -q '\-\-alpha' && echo 0 || echo 1)"
+    check "--help documents DVM_VERSION" "0" \
+      "$(echo "${cli_out}" | grep -q 'DVM_VERSION' && echo 0 || echo 1)"
     check "--help documents the piped spelling" "0" \
-      "$(echo "${cli_out}" | grep -q 'sh -s -- --alpha' && echo 0 || echo 1)"
+      "$(echo "${cli_out}" | grep -q 'curl -fsSL' && echo 0 || echo 1)"
 
-    # --- --alpha and DVM_VERSION together ------------------------------------
-    #
-    # REFUSED, NOT RANKED. They name two different installs, and honouring
-    # either one silently tells the user the install succeeded — for the version
-    # they did not ask for. There is no spelling of DVM_VERSION that means "the
-    # alpha" either: install.sh turns the value into a `v`-prefixed tag, and the
-    # alpha's tag does not start with a `v`.
-    cli_status=0
-    cli_out="$(
-      PATH="${cli_bin}:${PATH}" \
-        DVM_INSTALL_SH_LIB="" \
-        HOME="${cli_home}" \
-        DVM_HOME="${cli_dir}/alpha-and-version" \
-        DVM_VERSION="0.2.0" \
-        FAKE_RELEASES_JSON="${cli_dir}/both.json" \
-        FAKE_ASSET_ROOT="${cli_assets}" \
-        sh "${root}/install.sh" --alpha 2>&1
-    )" || cli_status=$?
-
-    check "--alpha with DVM_VERSION fails" "1" \
-      "$([ "${cli_status}" -eq 0 ] && echo 0 || echo 1)"
-    check "--alpha with DVM_VERSION installs nothing" "1" \
-      "$([ -e "${cli_dir}/alpha-and-version/bin/dvm" ] && echo 0 || echo 1)"
-    check "--alpha with DVM_VERSION says both were asked for" "0" \
-      "$(echo "${cli_out}" | grep -q 'ask for two different things' \
-        && echo 0 || echo 1)"
-    check "--alpha with DVM_VERSION names both ways forward" "0" \
-      "$(echo "${cli_out}" | grep -q 'sh install.sh --alpha' && echo 0 || echo 1)"
-
-    # And DVM_VERSION on its own is untouched by any of this: it names an exact
-    # tag and skips the release lookup, which is why the fake API is pointed at a
-    # path that does not exist here and nothing notices.
+    # DVM_VERSION names an exact tag and skips the release lookup, which is why
+    # the fake API is pointed at a path that does not exist here and nothing
+    # notices.
     cli_status=0
     PATH="${cli_bin}:${PATH}" \
       DVM_INSTALL_SH_LIB="" \
@@ -1166,13 +1053,12 @@ FAKECURL
   fi
 fi
 
-# --- the workflows behind the two channels ------------------------------------
+# --- the workflow behind the installer ----------------------------------------
 #
-# install.sh's alpha channel is half a feature on its own: it can only ever find
-# what a workflow publishes. These assert the two properties the channels depend
-# on, in the files that decide them, because "release.yml is still manual" and
-# "the alpha is flagged prerelease" are exactly the kind of claim that gets made
-# in a commit message and then quietly stops being true.
+# install.sh can only ever find what a workflow publishes, so the property it
+# depends on is asserted in the file that decides it: "release.yml is still
+# manual" is exactly the kind of claim that gets made in a commit message and
+# then quietly stops being true.
 
 # The keys directly under `on:` in the workflow "$1", one per line. Two-space
 # indentation only, so a nested key like `branches:` is not mistaken for a
@@ -1190,51 +1076,19 @@ workflow_triggers() {
 }
 
 release_yml="${root}/.github/workflows/release.yml"
-alpha_yml="${root}/.github/workflows/alpha.yml"
 
-# THE GUARANTEE THE ALPHA WORKFLOW MUST NOT HAVE COST. release.yml's own header
-# says it: a release goes out only after a human chose to publish it, and what
-# enforces that is dispatch being its only trigger. Adding a rolling alpha is
-# exactly the change that would tempt someone to put `push:` back there.
+# THE GUARANTEE. release.yml's own header says it: a release goes out only after
+# a human chose to publish it, and what enforces that is dispatch being its only
+# trigger. Anything that wants to publish from CI on a push is exactly the change
+# that would tempt someone to put `push:` back there.
 check "release.yml is still workflow_dispatch-only" "workflow_dispatch" \
   "$(workflow_triggers "${release_yml}" | tr '\n' ' ' | sed 's/ *$//')"
 
-# ...and stamp_version.sh still refuses, which is the other thing an alpha could
-# have been built by weakening. The alpha stamps the pubspec's own version, so it
-# never meets that refusal rather than being excused from it.
+# ...and stamp_version.sh still refuses a version the pubspec does not claim,
+# which is what makes a published binary unable to lie about its version.
 check "stamp_version.sh still refuses a mismatched version" "0" \
   "$(grep -q 'REFUSING to stamp a version the package does not claim' \
     "${root}/tool/stamp_version.sh" && echo 0 || echo 1)"
-
-check "the alpha workflow exists" "0" \
-  "$([ -f "${alpha_yml}" ] && echo 0 || echo 1)"
-
-if [ -f "${alpha_yml}" ]; then
-  check "the alpha workflow builds on pushes to main" "push workflow_dispatch" \
-    "$(workflow_triggers "${alpha_yml}" | tr '\n' ' ' | sed 's/ *$//')"
-
-  # The flag pick_tag's alpha channel filters on. Without it the release is
-  # invisible to --alpha AND visible to every plain install, which is the one
-  # outcome the split exists to prevent.
-  check "the alpha workflow publishes a prerelease" "0" \
-    "$(grep -q -- '--prerelease' "${alpha_yml}" && echo 0 || echo 1)"
-
-  # ONE rolling tag, and one that cannot be read as a version. install.sh reads a
-  # single page of /releases and filters inside it, so an unbounded number of
-  # alpha prereleases would eventually push the newest STABLE release off that
-  # page and break the DEFAULT installer.
-  check "the alpha workflow publishes under the rolling alpha tag" "0" \
-    "$(grep -q 'release create alpha' "${alpha_yml}" && echo 0 || echo 1)"
-  check "the alpha workflow creates no v-prefixed tag" "1" \
-    "$(grep -qE 'release create "?v' "${alpha_yml}" && echo 0 || echo 1)"
-  check "the alpha workflow does not take the Latest slot" "0" \
-    "$(grep -q -- '--latest=false' "${alpha_yml}" && echo 0 || echo 1)"
-
-  # The stamp that makes an alpha admit to being one in `dvm --version`. Its
-  # absence would leave a binary indistinguishable from a release.
-  check "the alpha workflow stamps a build tag" "0" \
-    "$(grep -q 'tool/stamp_build_tag.sh' "${alpha_yml}" && echo 0 || echo 1)"
-fi
 
 # --- one copy of the message, and only one ------------------------------------
 

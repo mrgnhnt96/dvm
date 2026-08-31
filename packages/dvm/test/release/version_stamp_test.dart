@@ -29,29 +29,4 @@ void main() {
   test('the CLI reports kVersion', () {
     expect(version(), kVersion);
   });
-
-  // The other half of the same guarantee. `tool/stamp_build_tag.sh` writes this
-  // constant during the ALPHA build only, and a stamped copy committed by
-  // accident would make every ordinary build — and every release — report
-  // `0.1.0+alpha.<somebody's commit>` from then on.
-  test('kBuildTag is empty in the checkout', () {
-    expect(
-      kBuildTag,
-      isEmpty,
-      reason: 'lib/src/gen/version.dart carries a stamped kBuildTag. Only the '
-          'alpha build stamps it, and it must never be committed: a release '
-          'would then report itself as an alpha.',
-    );
-  });
-
-  // buildVersion rather than version(), because kBuildTag is committed empty:
-  // a test calling version() can only ever exercise the release half, and the
-  // alpha half is the half nothing else in the suite reaches.
-  test('buildVersion appends a build tag as semver build metadata', () {
-    expect(buildVersion('0.1.0', 'alpha.g1a2b3c4'), '0.1.0+alpha.g1a2b3c4');
-  });
-
-  test('buildVersion leaves a version with no build tag alone', () {
-    expect(buildVersion('0.1.0', ''), '0.1.0');
-  });
 }
