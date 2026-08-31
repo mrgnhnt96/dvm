@@ -94,6 +94,13 @@ jobs:
       # Skipped on Windows because the script's audience is a POSIX shell:
       # install.sh is what `curl | sh` runs, and Windows installs dvm another
       # way. The Linux and macOS jobs keep every check they had.
+      #
+      # tool/install_from_main.sh gets the parse check too, and the suite RUNS
+      # it: it installs a build of the checkout by calling install.sh's own
+      # functions, and it once called one of them with the wrong number of
+      # arguments and died after installing the binary. `sh -n` does not catch
+      # that — running it does. No shellcheck line for it, because nobody has
+      # yet watched shellcheck pass on it.
       - name: Check install.sh
         if: runner.os != 'Windows'
         run: |
@@ -103,6 +110,7 @@ jobs:
           else
             echo "shellcheck not present on this runner; ran sh -n only"
           fi
+          sh -n tool/install_from_main.sh
           sh tool/test_install_sh.sh
 
       # Same reasoning: these are bash scripts run by the release workflow,

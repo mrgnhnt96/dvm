@@ -504,6 +504,18 @@ else
   check "a clean install prints no ~ or \$HOME in its paths" "1" \
     "$(echo "${clean_out}" | grep -q 'PATH="\$HOME\|PATH="~' && echo 0 || echo 1)"
 
+  # THE SAME BYTES, not merely the same facts. main's closing message and
+  # print_next_steps' output are asserted equal so the extraction cannot rot
+  # into two messages that agree in summary and differ in what a user pastes.
+  # Line 4 onward is the message: 1 is "Downloading...", 2 blank, 3 is the
+  # "installed at" line, and the function opens with a blank line of its own.
+  clean_fn_out="$(
+    PATH="/usr/bin:/bin"
+    print_next_steps "" "${msgdir}/clean-dvm" "${msgdir}/clean-dvm/bin"
+  )"
+  check "main's closing message IS print_next_steps, byte for byte" \
+    "${clean_fn_out}" "$(printf '%s\n' "${clean_out}" | sed -n '4,$p')"
+
   # The other branch of the same case: ~/.dvm/bin is already on PATH. The
   # SHIMS half can still be missing, so this branch is not "nothing to do" —
   # it is the same two options, shrunk to the half that is still needed.
@@ -525,6 +537,13 @@ else
   check "the already-on-PATH line keeps \$PATH literal" "0" \
     "$(echo "${onpath_out}" | grep -q 'export PATH="[^"]*:\$PATH"' \
       && echo 0 || echo 1)"
+
+  onpath_fn_out="$(
+    PATH="${msgdir}/onpath-dvm/bin:/usr/bin:/bin"
+    print_next_steps "" "${msgdir}/onpath-dvm" "${msgdir}/onpath-dvm/bin"
+  )"
+  check "the already-on-PATH message IS print_next_steps, byte for byte" \
+    "${onpath_fn_out}" "$(printf '%s\n' "${onpath_out}" | sed -n '4,$p')"
 
   # The same install into a home that has the user's .zshrc:107 in it.
   shadowed_home="${msgdir}/shadowed-home"
@@ -600,6 +619,187 @@ else
 fi
 
 rm -rf "${shadow_home}"
+
+# --- the closing message as a CALLABLE function -------------------------------
+
+# It has to be callable, and not merely correct inside main. tool/install_from_main.sh
+# installs a build of the checkout and has to close with the same words; while
+# this block lived inline in main() it could not be called, so that script
+# carried a hand-copy of it, and the copy went stale the day the message was
+# rewritten. These checks are what keep it callable — a future refactor that
+# folds it back into main fails here before it can grow a second copy.
+fn_home="/nowhere/dvm"
+fn_bin="${fn_home}/bin"
+
+fn_offpath="$( PATH="/usr/bin:/bin"; print_next_steps "" "${fn_home}" "${fn_bin}" )"
+fn_onpath="$( PATH="${fn_bin}:/usr/bin:/bin"; print_next_steps "" "${fn_home}" "${fn_bin}" )"
+fn_shadowed="$(
+  PATH="/usr/bin:/bin"
+  print_next_steps "/nowhere/.zshrc:107: . dvm   (a shell function named dvm)" \
+    "${fn_home}" "${fn_bin}"
+)"
+
+check "the function is defined by sourcing in library mode" "0" \
+  "$(command -v print_next_steps > /dev/null 2>&1 && echo 0 || echo 1)"
+
+# The off-PATH branch: one command by absolute path, and ONE export line
+# covering both directories for someone who would rather paste it themselves.
+check "off-PATH branch offers the one absolute-path command" "0" \
+  "$(echo "${fn_offpath}" | grep -q "${fn_bin}/dvm setup --write-path-line" \
+    && echo 0 || echo 1)"
+check "off-PATH branch offers one line covering both directories" "0" \
+  "$(echo "${fn_offpath}" | grep -q "export PATH=\"${fn_home}/shims:${fn_bin}:" \
+    && echo 0 || echo 1)"
+
+# The on-PATH branch: the same two options, shrunk to the shims half.
+check "on-PATH branch offers the one absolute-path command" "0" \
+  "$(echo "${fn_onpath}" | grep -q "${fn_bin}/dvm setup --write-path-line" \
+    && echo 0 || echo 1)"
+check "on-PATH branch offers the shims line" "0" \
+  "$(echo "${fn_onpath}" | grep -q "export PATH=\"${fn_home}/shims:" \
+    && echo 0 || echo 1)"
+check "on-PATH branch does not re-add the bin directory" "1" \
+  "$(echo "${fn_onpath}" | grep -q "shims:${fn_bin}:" && echo 0 || echo 1)"
+
+# Both branches, and the whole reason this is asserted as literal text: a
+# startup-file line assigning an EXPANDED absolute PATH discards everything
+# PATH held before it, silently, on every login. Single quotes so this test's
+# own shell does not expand it either.
+check "off-PATH branch keeps \$PATH literal" "0" \
+  "$(echo "${fn_offpath}" | grep -q 'export PATH="[^"]*:\$PATH"' && echo 0 || echo 1)"
+check "on-PATH branch keeps \$PATH literal" "0" \
+  "$(echo "${fn_onpath}" | grep -q 'export PATH="[^"]*:\$PATH"' && echo 0 || echo 1)"
+
+# The shadowed case: point at the fix and hand out NOTHING to paste. A `dvm`
+# function or alias beats PATH, so an export line would change nothing while
+# looking like it worked, and `--write-path-line` refuses to write at all.
+# warn_about_shadows is what orders the fix; this only defers to it.
+check "the shadowed case says what to clear first" "0" \
+  "$(echo "${fn_shadowed}" | grep -q 'startup files to clear' && echo 0 || echo 1)"
+check "the shadowed case does not lead with the one command" "1" \
+  "$(echo "${fn_shadowed}" | grep -q 'One command finishes the setup' && echo 0 || echo 1)"
+check "the shadowed case hands out no export line" "1" \
+  "$(echo "${fn_shadowed}" | grep -q 'export PATH=' && echo 0 || echo 1)"
+
+# --- tool/install_from_main.sh, run for real ----------------------------------
+
+# The bug that actually reached a user, and the only kind of check that catches
+# it: install_from_main.sh called warn_about_shadows with TWO arguments after
+# that function grew a third, so under `set -u` it died on "$3: unbound
+# variable" — after installing the binary, before printing one word of
+# guidance. It parses fine; `sh -n` sees nothing wrong. Nothing but running it
+# fails on a wrong-arity call into install.sh, and nothing ran it, because the
+# script was untracked.
+#
+# `dart` is stubbed rather than invoked: this is about the closing sequence,
+# not about compiling dvm, and a real `dart compile exe` is a minute per run.
+fromdir="$(mktemp -d)"
+fake_bin="${fromdir}/fakebin"
+mkdir -p "${fake_bin}"
+cat > "${fake_bin}/dart" << 'FAKEDART'
+#!/bin/sh
+# Stands in for `dart compile exe <src> -o <out>`: writes something executable
+# at <out> and nothing else.
+out=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    out="$2"
+    shift
+  fi
+  shift
+done
+[ -n "${out}" ] || exit 1
+printf '#!/bin/sh\necho dvm\n' > "${out}"
+chmod 755 "${out}"
+FAKEDART
+chmod 755 "${fake_bin}/dart"
+
+from_home="${fromdir}/home"
+mkdir -p "${from_home}"
+printf 'export PATH="$HOME/bin:$PATH"\n' > "${from_home}/.zshrc"
+from_dvm="${fromdir}/dvm"
+
+from_status=0
+from_out="$(HOME="${from_home}" DVM_HOME="${from_dvm}" PATH="${fake_bin}:${PATH}" \
+  sh "${root}/tool/install_from_main.sh" 2>&1)" || from_status=$?
+
+# EXIT STATUS IS NOT ENOUGH, and finding that out is half of why this section
+# exists. The arity bug aborts the script part-way under `set -u` — and
+# install_from_main.sh carries a `trap ... EXIT` to remove its temp dir, so the
+# trap body succeeds and REPLACES the failing status with 0. Measured on the
+# broken script: exits 1 with no trap, 0 with one under bash (macOS /bin/sh),
+# 2 under dash. A machine can therefore report a clean install of a script that
+# died before saying anything, which is exactly what happened to the user.
+#
+# So what is asserted is that it REACHED ITS LAST LINE and printed no shell
+# error. The status check stays because it is free and it does fail on the
+# shells where it works, but nothing here rests on it.
+check "install_from_main.sh exits 0" "0" "${from_status}"
+check "install_from_main.sh reaches its last line" "0" \
+  "$(printf '%s\n' "${from_out}" | tail -n 1 | grep -q -- '-v doctor' \
+    && echo 0 || echo 1)"
+check "install_from_main.sh reports no shell error" "1" \
+  "$(echo "${from_out}" | grep -q 'unbound variable\|parameter not set' \
+    && echo 0 || echo 1)"
+check "install_from_main.sh installs the binary" "0" \
+  "$([ -x "${from_dvm}/bin/dvm" ] && echo 0 || echo 1)"
+
+# Not "it printed something about PATH" — the SAME BYTES install.sh prints. This
+# is the assertion the hand-copy could never have passed.
+from_fn_out="$(
+  PATH="${fake_bin}:${PATH}"
+  print_next_steps "" "${from_dvm}" "${from_dvm}/bin"
+)"
+case "${from_out}" in
+  *"${from_fn_out}"*) from_match=0 ;;
+  *) from_match=1 ;;
+esac
+check "install_from_main.sh closes with install.sh's own message, verbatim" "0" \
+  "${from_match}"
+
+rm -rf "${fromdir}"
+
+# --- one copy of the message, and only one ------------------------------------
+
+# THE REGRESSION GUARD. Everything above passes just as well with two copies of
+# the message in the repo, as long as both are correct today — and "correct
+# today" is exactly what the last copy was, right up until install.sh's message
+# was rewritten and it was not. So: the prose may appear in install.sh and
+# nowhere else.
+#
+# WHAT THIS DOES NOT CATCH, stated rather than left to be discovered.
+#
+# It catches a copy AT THE MOMENT IT IS MADE, while it still matches. It does
+# NOT catch one that has already drifted — which is the state the copy is in by
+# the time it does damage. Measured, not assumed: the stale copy this leaf
+# removed contains neither phrase below, because the wording it duplicated is
+# the wording that got replaced. That is fine going forward, since a copy has to
+# be made before it can drift and this fires on the making, but it means the
+# guard is worthless for finding one that is already out there.
+#
+# It scans shell scripts only, so the same words pasted into a README or a docs
+# page go unnoticed. It excludes THIS file, which quotes fragments of the
+# message on purpose as expectations. And a copy that paraphrases rather than
+# duplicates is invisible to it.
+#
+# An untracked script counts. The copy that caused this had never been committed
+# — that is why no test ran it and no gate covered it — so this walks the tree
+# rather than asking git what is tracked.
+for phrase in "One command finishes the setup" "before it exists is deliberate"; do
+  copies="$(
+    find "${root}" -type f -name '*.sh' \
+      ! -path "${root}/install.sh" \
+      ! -path "${root}/tool/test_install_sh.sh" \
+      ! -path "${root}/.git/*" \
+      ! -path "${root}/.worktrees/*" \
+      ! -path "${root}/.game_loop/*" \
+      ! -path "${root}/.showrunner/*" \
+      -exec grep -l "${phrase}" {} \; 2> /dev/null \
+      | sed "s|^${root}/||" | sort | tr '\n' ' ' | sed 's/ *$//'
+  )"
+  check "[${phrase}] appears in install.sh only" "" "${copies}"
+done
+
 # --- result -------------------------------------------------------------------
 
 if [ "${failures}" -ne 0 ]; then
