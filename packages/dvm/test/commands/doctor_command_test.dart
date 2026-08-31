@@ -126,6 +126,77 @@ void main() {
       expect(harness.output, contains('cbracken/dvm'));
     });
 
+    test('warns when a startup file puts the shims on PATH but PATH does not',
+        () async {
+      // The state this leaf is about, and the one the reporter was stuck in:
+      // the line is real, it is in a real file, and the shell running doctor
+      // has never sourced that file. The PATH check above already FAILs; this
+      // is the finding that says WHY and names the file.
+      makeHealthy();
+      harness.environment['PATH'] = '/usr/bin';
+      harness.fileSystem.file('/home/dev/.profile')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('# >>> dvm >>>\n'
+            r'export PATH="/dvm/shims:$PATH"'
+            '\n# <<< dvm <<<\n');
+
+      expect(await harness.run(['doctor']), 1);
+
+      expect(harness.output, contains('warn  shell:'));
+      expect(
+          harness.output,
+          contains('is put on PATH by a startup file, but '
+              'it is not on the PATH of this shell'));
+      expect(harness.output, contains('/home/dev/.profile:2:'));
+      expect(harness.output, contains('no new shell has been started'));
+      // One problem, not two: the PATH check already counted the failure, and
+      // this explains that failure rather than being a second one.
+      expect(harness.output, contains('1 problem, 1 warning.'));
+    });
+
+    test('names the other shell whose rc files are sitting right there',
+        () async {
+      makeHealthy();
+      harness.environment['PATH'] = '/usr/bin';
+      harness.environment.remove('SHELL');
+      harness.fileSystem.file('/home/dev/.zshrc')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('export EDITOR=vim\n');
+      harness.fileSystem.file('/home/dev/.profile')
+        ..createSync(recursive: true)
+        ..writeAsStringSync(r'export PATH="/dvm/shims:$PATH"' '\n');
+
+      expect(await harness.run(['doctor']), 1);
+
+      expect(
+          harness.output,
+          contains('/home/dev/.zshrc is here too, so zsh '
+              'is in use on this machine'));
+      expect(harness.output,
+          contains('SHELL=<your shell> dvm setup --write-path-line'));
+    });
+
+    test('says nothing when the line is in a file and IS in effect', () async {
+      makeHealthy();
+      harness.fileSystem.file('/home/dev/.zshrc')
+        ..createSync(recursive: true)
+        ..writeAsStringSync(r'export PATH="/dvm/shims:$PATH"' '\n');
+
+      expect(await harness.run(['doctor']), 0);
+      expect(harness.output, contains('Everything checks out.'));
+    });
+
+    test('says nothing when no startup file mentions the shims at all',
+        () async {
+      // The plain "not set up yet" machine. It gets the PATH failure and no
+      // second sentence, because there is no misfiled line to point at.
+      makeHealthy();
+      harness.environment['PATH'] = '/usr/bin';
+
+      expect(await harness.run(['doctor']), 1);
+      expect(harness.output, isNot(contains('put on PATH by a startup file')));
+    });
+
     test('warns, without failing, about an older dvm sharing the home',
         () async {
       makeHealthy();

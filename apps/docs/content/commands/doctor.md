@@ -49,6 +49,18 @@ usable as a CI gate: it fails the build on what is actually broken, and passes a
 
 **shell** — whether a shell function or alias named `dvm` is being sourced from your startup files. **This is the most valuable check in the command.** On a machine that has ever carried [`cbracken/dvm`](/guides/migrating), `dvm` is a shell *function*, and a shell function is resolved before `PATH` is searched at all — so the binary you installed is never reached, and nothing on screen says why. `doctor` reports the file and the line.
 
+**shell** — also whether a startup file puts `~/.dvm/shims` on `PATH` while the live `PATH` does not have it. That is the state where the line is real, the file is real, and the shell you are in has never sourced it — the `PATH` check above fails, and this is the finding that says why and names the file:
+
+```text
+  warn  shell: /Users/you/.dvm/shims is put on PATH by a startup file, but it is not on the PATH of this shell — so that line has never taken effect here.
+          /Users/you/.profile:2: export PATH="/Users/you/.dvm/shims:$PATH"
+          Either no new shell has been started since it was added, or the shell you are in does not read that file.
+          /Users/you/.zshrc is here too, so zsh is in use on this machine — and it reads its own startup files, not the one above.
+          -> Move the line into the startup file your shell actually reads, or re-run: SHELL=<your shell> dvm setup --write-path-line
+```
+
+It is a `warn` rather than a second `FAIL` because it explains a failure the `PATH` check has already counted. Both readings are given because dvm cannot tell them apart; starting a new shell settles it.
+
 **config** — that `~/.dvm/config.json` parses, and that the global default and aliases in it name versions that exist.
 
 **project** — the `.dvmrc` that applies here, found by the same walk up the tree that [`dvm use`](/commands/use) writes by, whether the version it pins is installed, and whether the `.dvm/dart_sdk` link beside that pin still reaches that SDK.

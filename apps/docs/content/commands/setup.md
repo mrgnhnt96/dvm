@@ -86,6 +86,52 @@ That is a consequence of going last, not an understanding of your file. If anoth
 
 It also writes to exactly one file — the one named for your `$SHELL`, which for bash is always `~/.bashrc`. If your shell reads something else, add the line there yourself.
 
+## When it cannot tell which file your shell reads
+
+`$SHELL` is how dvm knows which startup file is yours. When it is not set — a `Process.start` with a hand-built environment, some CI runners, a terminal launched by an app that does not export it — dvm falls back to `sh` and would write to `~/.profile`.
+
+That fallback is fine on a machine with no other startup files. It is wrong on a machine whose home holds a `~/.zshrc`, because **zsh does not read `~/.profile`**: the line would be written, backed up, and reported as a success, and it would never once take effect. So dvm refuses instead, names what it saw, and hands you the one command that resolves it:
+
+```text
+Not writing the PATH line: dvm cannot tell which startup file your shell reads.
+
+$SHELL is not set, so dvm assumed sh and would have written to /Users/you/.profile.
+But these startup files are here too, and they belong to a shell that does not read it:
+
+  /Users/you/.zshrc  (zsh)
+
+Writing to /Users/you/.profile would look like it worked and put nothing on your PATH.
+
+Name your shell and run this again:
+
+  SHELL=zsh dvm setup --write-path-line
+
+Or add this line to the startup file you actually use:
+
+  export PATH="/Users/you/.dvm/shims:/Users/you/.dvm/bin:$PATH"
+```
+
+Nothing is written and no backup is left behind, so there is no half-finished state for the next run to trip over. Plain `dvm setup` prints the same ambiguity instead of confidently naming a file.
+
+A `$SHELL` that names a real POSIX shell — `/bin/sh`, `/bin/dash`, `/bin/ksh` — is an answer, not a guess. Those read `~/.profile`, so dvm writes there without complaint.
+
+## When the line is there but has never run
+
+`--write-path-line` will not add a line that is already in the file. On its own that is a question about the file's CONTENTS, and it was once enough to report a confident "there is nothing to add" about a line in a `~/.profile` that nothing on the machine ever sourced.
+
+So dvm now also checks whether the shims directory is on the `PATH` of the shell you are standing in — the same question `dvm doctor` asks — and says so when the answer is no:
+
+```text
+/Users/you/.profile already puts /Users/you/.dvm/shims on PATH (line 2), so there is nothing to add.
+
+WARNING: that line is not in effect. /Users/you/.dvm/shims is not on the PATH of this shell, so `dart` does not go through dvm right now and `dvm doctor` reports it as a problem.
+Either no new shell has been started since that line was added, or your shell does not read /Users/you/.profile.
+  /Users/you/.zshrc is here too, and zsh does not read /Users/you/.profile.
+Check with: dvm doctor
+```
+
+Both readings are given because dvm cannot tell them apart: a line added a moment ago in this same shell is also "in the file, not on `PATH`". Starting a new shell settles it. `dvm doctor` reports the same state as a warning beside the `PATH` failure it explains.
+
 ## When it refuses to write
 
 A shell function or alias named `dvm` is resolved before `PATH` is ever searched, so it beats the binary outright. Writing the `PATH` line in that state would look like it worked and change nothing, so `--write-path-line` declines and says why, leaving the file untouched:
@@ -151,11 +197,11 @@ Or name the binary: dvm setup --dvm-path <path to dvm>
 
 `dvm setup` exits **1** when it finds something that would leave the shim inert — most importantly a [shell function shadowing `dvm`](/getting-started/shell-setup), which the older `cbracken/dvm` installs. The exit code tells you at the command that wrote the shim, rather than the next time you run `dart`.
 
-`--write-path-line` exits 1 for the same reason when it holds off: a function or alias named `dvm` beats `PATH` outright, so the line would look like it worked and change nothing. It says so, leaves the file untouched, and asks you to clear the warning and run it again. `--remove-path-line` exits **0** whether it removed dvm's block, found a line you wrote yourself, or found nothing to remove.
+`--write-path-line` exits 1 for the same reason when it holds off: a function or alias named `dvm` beats `PATH` outright, so the line would look like it worked and change nothing. It says so, leaves the file untouched, and asks you to clear the warning and run it again. It exits 1 on the same grounds when it [cannot tell which startup file your shell reads](#when-it-cannot-tell-which-file-your-shell-reads) — in both cases you asked for a line to be there and it is not. `--remove-path-line` exits **0** whether it removed dvm's block, found a line you wrote yourself, or found nothing to remove.
 
 ## Re-running it
 
-Safe, and the right thing to do after moving or reinstalling the dvm binary — the shim contains an absolute path to it. `--write-path-line` is safe to repeat too: the second run finds the line already there and says so.
+Safe, and the right thing to do after moving or reinstalling the dvm binary — the shim contains an absolute path to it. `--write-path-line` is safe to repeat too: the second run finds the line already there and says so — and tells you if that line is not actually in effect.
 
 ## See also
 

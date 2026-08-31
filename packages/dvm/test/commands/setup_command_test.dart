@@ -782,6 +782,158 @@ void main() {
     });
   });
 
+  /// The state this leaf exists for: a PATH line sitting in a startup file the
+  /// running shell does not read.
+  ///
+  /// `$SHELL` is unset — the condition that makes `ShellFacts` assume `sh` and
+  /// so pick `.profile` — the home holds a `.zshrc`, and the live `PATH` does
+  /// not have the shims directory. Every one of those is what the reporter's
+  /// machine looked like.
+  group('a PATH line in a file this shell does not read', () {
+    setUp(() {
+      harness.environment.remove('SHELL');
+      harness.fileSystem.file('/home/dev/.zshrc')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('export EDITOR=vim\n');
+      harness.environment['PATH'] = '/usr/bin';
+    });
+
+    test('--write-path-line refuses rather than writing to .profile', () async {
+      expect(
+        await harness.run(
+          ['setup', '--write-path-line', '--dvm-path', installDvmBinary()],
+        ),
+        1,
+      );
+
+      // The whole point: nothing was written, so there is no misfiled line and
+      // no backup beside it for the next run to find and call "already there".
+      expect(
+          harness.fileSystem.file('/home/dev/.profile').existsSync(), isFalse);
+      expect(harness.errors, contains('Not writing the PATH line'));
+      expect(harness.errors, contains(r'$SHELL is not set'));
+      expect(harness.errors, contains('/home/dev/.zshrc  (zsh)'));
+      expect(harness.errors, contains('would look like it worked'));
+      expect(
+        harness.errors,
+        contains('SHELL=zsh dvm setup --write-path-line'),
+      );
+    });
+
+    test(
+        'an unrecognised \$SHELL is refused the same way, and says what it '
+        'saw', () async {
+      harness.environment['SHELL'] = '/usr/local/bin/nu';
+
+      expect(
+        await harness.run(
+          ['setup', '--write-path-line', '--dvm-path', installDvmBinary()],
+        ),
+        1,
+      );
+      expect(
+          harness.errors,
+          contains(r'$SHELL says /usr/local/bin/nu, which dvm does not '
+              'recognise'));
+      expect(
+          harness.fileSystem.file('/home/dev/.profile').existsSync(), isFalse);
+    });
+
+    test('plain setup names the ambiguity instead of naming .profile',
+        () async {
+      expect(await harness.run(['setup', '--dvm-path', installDvmBinary()]), 0);
+
+      expect(harness.output,
+          contains('cannot tell which startup file your shell reads'));
+      expect(
+          harness.output,
+          contains('/home/dev/.profile  (sh, what dvm '
+              'would have assumed)'));
+      expect(harness.output, contains('/home/dev/.zshrc  (zsh)'));
+      expect(
+          harness.output,
+          contains('Add this line to the one your shell '
+              'actually reads:'));
+      // The flag would decline in this exact state, so it must not be the
+      // suggested next step — the same rule the shadow branch follows.
+      expect(harness.output, isNot(contains('Or let dvm add it for you')));
+    });
+
+    test(
+        'a line already in .profile is NOT reported as "nothing to add" and '
+        'nothing else', () async {
+      // The exact contradiction from the incident: an earlier dvm wrote the
+      // block into .profile, the shell never sourced it, and the second run
+      // said there was nothing to add while `dvm doctor` failed.
+      harness.fileSystem.file('/home/dev/.profile')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('# >>> dvm >>>\n'
+            'export PATH="/dvm/shims:/dvm/bin:\$PATH"\n'
+            '# <<< dvm <<<\n');
+      // A recognised $SHELL, so the guess guard is out of the picture and the
+      // ONLY thing that can catch this is the in-effect check.
+      harness.environment['SHELL'] = '/bin/sh';
+
+      expect(
+        await harness.run(
+          ['setup', '--write-path-line', '--dvm-path', installDvmBinary()],
+        ),
+        0,
+      );
+
+      expect(harness.output, contains('so there is nothing to add'));
+      expect(harness.errors, contains('that line is not in effect'));
+      expect(
+          harness.errors,
+          contains('/dvm/shims is not on the PATH of this '
+              'shell'));
+      expect(harness.errors, contains('does not read /home/dev/.profile'));
+      expect(
+          harness.errors,
+          contains('/home/dev/.zshrc is here too, and zsh '
+              'does not read /home/dev/.profile.'));
+      expect(harness.errors, contains('Check with: dvm doctor'));
+    });
+
+    test('a line that IS in effect says nothing extra', () async {
+      harness.fileSystem.file('/home/dev/.profile')
+        ..createSync(recursive: true)
+        ..writeAsStringSync(r'export PATH="/dvm/shims:$PATH"' '\n');
+      harness.environment['SHELL'] = '/bin/sh';
+      harness.environment['PATH'] = '/dvm/shims:/usr/bin';
+
+      expect(
+        await harness.run(
+          ['setup', '--write-path-line', '--dvm-path', installDvmBinary()],
+        ),
+        0,
+      );
+
+      expect(harness.output, contains('so there is nothing to add'));
+      expect(harness.errors, isNot(contains('not in effect')));
+    });
+
+    test('--remove-path-line is NOT guarded, so the mess stays undoable',
+        () async {
+      // A user who already has the misfiled line has to be able to take it out,
+      // and the guard that stops dvm creating another one must not stand in
+      // the way of cleaning up the first.
+      harness.fileSystem.file('/home/dev/.profile')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('# >>> dvm >>>\n'
+            r'export PATH="/dvm/shims:$PATH"'
+            '\n# <<< dvm <<<\n');
+
+      expect(await harness.run(['setup', '--remove-path-line']), 0);
+
+      expect(harness.output, contains("Removed dvm's PATH line"));
+      expect(
+        harness.fileSystem.file('/home/dev/.profile').readAsStringSync(),
+        isEmpty,
+      );
+    });
+  });
+
   test('refuses to write and remove the PATH line in one run', () async {
     expect(
       await harness.run([
