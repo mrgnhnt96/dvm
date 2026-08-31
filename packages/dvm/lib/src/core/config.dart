@@ -5,6 +5,7 @@ import 'package:file/file.dart';
 import 'channel.dart';
 import 'exceptions.dart';
 import 'paths.dart';
+import 'verbose.dart';
 
 /// The contents of `~/.dvm/config.json`.
 ///
@@ -62,10 +63,15 @@ class DvmConfig {
 
 /// Reads and writes `~/.dvm/config.json`.
 class ConfigStore {
-  ConfigStore({required this.fileSystem, required this.paths});
+  ConfigStore({
+    required this.fileSystem,
+    required this.paths,
+    VerboseLog? verbose,
+  }) : _verbose = verbose ?? VerboseLog.disabled;
 
   final FileSystem fileSystem;
   final DvmPaths paths;
+  final VerboseLog _verbose;
 
   /// The stored config, or [DvmConfig.empty] when the file does not exist.
   ///
@@ -74,11 +80,21 @@ class ConfigStore {
   /// global version the user believes they set.
   DvmConfig read() {
     final file = paths.configFile;
-    if (!file.existsSync()) return DvmConfig.empty;
+    if (!file.existsSync()) {
+      _verbose.log(
+          VerboseArea.fs,
+          () => '${file.path} does not exist; '
+              'no global default and no aliases');
+      return DvmConfig.empty;
+    }
 
     final path = file.path;
     final raw = file.readAsStringSync();
-    if (raw.trim().isEmpty) return DvmConfig.empty;
+    _verbose.log(VerboseArea.fs, () => 'read $path (${raw.length} bytes)');
+    if (raw.trim().isEmpty) {
+      _verbose.log(VerboseArea.fs, () => '$path is empty; using defaults');
+      return DvmConfig.empty;
+    }
 
     final Object? decoded;
     try {
@@ -97,7 +113,7 @@ class ConfigStore {
       );
     }
 
-    return DvmConfig(
+    final config = DvmConfig(
       global: _readOptionalString(decoded, 'global', path),
       aliases: _readStringMap(decoded, 'aliases', path),
       channels: _readStringMap(decoded, 'channels', path),
@@ -107,6 +123,13 @@ class ConfigStore {
             entry.key: entry.value,
       },
     );
+    _verbose.log(
+      VerboseArea.fs,
+      () => '  global=${config.global ?? '(unset)'} '
+          'aliases={${_describeMap(config.aliases)}} '
+          'channels={${_describeMap(config.channels)}}',
+    );
+    return config;
   }
 
   /// Writes [config], creating `~/.dvm` if needed.
@@ -115,6 +138,12 @@ class ConfigStore {
     file.parent.createSync(recursive: true);
     file.writeAsStringSync(
       '${const JsonEncoder.withIndent('  ').convert(config.toJson())}\n',
+    );
+    _verbose.log(
+      VerboseArea.fs,
+      () => 'wrote ${file.path}: global=${config.global ?? '(unset)'} '
+          'aliases={${_describeMap(config.aliases)}} '
+          'channels={${_describeMap(config.channels)}}',
     );
   }
 
@@ -164,9 +193,11 @@ class ConfigStore {
 
 /// Reads and writes the per-project `.dvmrc`.
 class DvmrcStore {
-  DvmrcStore({required this.fileSystem});
+  DvmrcStore({required this.fileSystem, VerboseLog? verbose})
+      : _verbose = verbose ?? VerboseLog.disabled;
 
   final FileSystem fileSystem;
+  final VerboseLog _verbose;
 
   /// The pin recorded in [file], or null when [file] does not exist.
   ///
@@ -175,13 +206,25 @@ class DvmrcStore {
   /// version, an alias, or a channel, and resolving that is the resolver's job.
   String? read(File file) {
     if (!file.existsSync()) return null;
-    return parse(file.readAsStringSync(), file.path);
+    final contents = file.readAsStringSync();
+    // The RAW contents, escaped onto one line: a `.dvmrc` that resolves to
+    // something surprising is usually surprising because of what is literally
+    // in it — a stray quote, a second line, trailing whitespace.
+    _verbose.log(
+      VerboseArea.resolve,
+      () => 'read ${file.path}: ${_oneLine(contents)}',
+    );
+    return parse(contents, file.path);
   }
 
   /// Always writes the canonical JSON form, whatever was there before.
   void write(File file, String version) {
     file.parent.createSync(recursive: true);
     file.writeAsStringSync('{\n  "dart": "$version"\n}\n');
+    _verbose.log(
+      VerboseArea.fs,
+      () => 'wrote ${file.path}: {"dart": "$version"}',
+    );
   }
 
   /// The nearest `.dvmrc` at or above [from], or null if there is none.
@@ -192,13 +235,31 @@ class DvmrcStore {
     var directory = fileSystem.directory(
       fileSystem.path.normalize(from.absolute.path),
     );
+    _verbose.log(
+      VerboseArea.resolve,
+      () => '${DvmPaths.dvmrcFileName} walk starts at ${directory.path}',
+    );
     while (true) {
       final candidate = fileSystem.file(
         fileSystem.path.join(directory.path, DvmPaths.dvmrcFileName),
       );
-      if (candidate.existsSync()) return candidate;
+      if (candidate.existsSync()) {
+        _verbose.log(
+          VerboseArea.resolve,
+          () => '  ${directory.path} -> found ${candidate.path}',
+        );
+        return candidate;
+      }
+      _verbose.log(VerboseArea.resolve, () => '  ${directory.path} -> none');
       final parent = directory.parent;
-      if (parent.path == directory.path) return null;
+      if (parent.path == directory.path) {
+        _verbose.log(
+          VerboseArea.resolve,
+          () => '  reached the filesystem root; no '
+              '${DvmPaths.dvmrcFileName} anywhere above ${from.path}',
+        );
+        return null;
+      }
       directory = parent;
     }
   }
@@ -286,6 +347,14 @@ class DvmrcStore {
     return pin;
   }
 }
+
+/// [contents] on one line, so a multi-line `.dvmrc` stays one log line.
+String _oneLine(String contents) =>
+    contents.replaceAll('\r', r'\r').replaceAll('\n', r'\n');
+
+/// `a=1, b=2` — a map small enough to put on the end of a log line.
+String _describeMap(Map<String, String> values) =>
+    values.entries.map((entry) => '${entry.key}=${entry.value}').join(', ');
 
 String _describeJsonType(Object? value) => switch (value) {
       null => 'null',

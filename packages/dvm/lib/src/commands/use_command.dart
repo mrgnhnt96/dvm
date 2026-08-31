@@ -150,6 +150,7 @@ class UseCommand extends Command<int> {
   Link _linkProjectSdk(Directory project, String version) => linkProjectSdk(
         link: context.paths.projectSdkLink(project),
         target: context.paths.versionDir(version),
+        verbose: context.verbose,
       );
 
   /// Says whether `.dvm/` is ignored, and adds it when asked to.

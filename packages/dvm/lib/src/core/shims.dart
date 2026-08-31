@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import '../archive/sdk_extractor.dart';
 import 'exceptions.dart';
 import 'paths.dart';
+import 'verbose.dart';
 
 /// Writes and reads `~/.dvm/shims/dart`.
 ///
@@ -23,11 +24,14 @@ class ShimWriter {
     required this.fileSystem,
     required this.paths,
     ModeApplier? modes,
-  }) : _modes = modes ?? _defaultModes(fileSystem);
+    VerboseLog? verbose,
+  })  : _modes = modes ?? _defaultModes(fileSystem),
+        _verbose = verbose ?? VerboseLog.disabled;
 
   final FileSystem fileSystem;
   final DvmPaths paths;
   final ModeApplier _modes;
+  final VerboseLog _verbose;
 
   /// `0755` — readable and executable by everyone, writable by the owner.
   ///
@@ -47,12 +51,25 @@ class ShimWriter {
 
     final shim = paths.dartShim;
     shim.parent.createSync(recursive: true);
-    shim.writeAsStringSync(body(dvmExecutable));
+    final contents = body(dvmExecutable);
+    shim.writeAsStringSync(contents);
+    _verbose.logAll(
+      VerboseArea.fs,
+      () => [
+        'wrote ${shim.path}',
+        for (final line in contents.trimRight().split(RegExp(r'\r?\n')))
+          '  | $line',
+      ],
+    );
 
     // Windows has no mode bits: a `.bat` is executable because of its
     // extension, and there is no chmod to call.
     if (!_isWindows) {
       await _modes.apply({shim.path: shimMode});
+      _verbose.log(
+        VerboseArea.fs,
+        () => '  chmod 0${shimMode.toRadixString(8)} ${shim.path}',
+      );
     }
     return shim;
   }

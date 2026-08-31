@@ -8,6 +8,7 @@ import '../core/installer.dart';
 import '../core/paths.dart';
 import '../core/platform.dart';
 import '../core/releases.dart';
+import '../core/verbose.dart';
 import 'dart_archive_client.dart';
 import 'dart_archive_exception.dart';
 import 'sdk_downloader.dart';
@@ -31,7 +32,9 @@ class SdkInstaller implements Installer {
     SdkDownloader? downloader,
     SdkExtractor? extractor,
     ModeApplier? modeApplier,
+    VerboseLog? verbose,
   })  : _hostPlatform = hostPlatform,
+        _verbose = verbose ?? VerboseLog.disabled,
         _progress = progress,
         _progressIsTerminal = progressIsTerminal,
         _injectedDownloader = downloader,
@@ -50,6 +53,7 @@ class SdkInstaller implements Installer {
   final ModeApplier _modeApplier;
   final SdkDownloader? _injectedDownloader;
   final http.Client? _httpClient;
+  final VerboseLog _verbose;
 
   /// Built on first use; see [DartArchiveClient] for why that matters.
   late final SdkDownloader _downloader = _injectedDownloader ??
@@ -58,6 +62,7 @@ class SdkInstaller implements Installer {
         progress: _progress,
         progressIsTerminal: _progressIsTerminal,
         httpClient: _httpClient,
+        verbose: _verbose,
       );
 
   final Random _random = Random();
@@ -73,7 +78,13 @@ class SdkInstaller implements Installer {
     bool force = false,
   }) async {
     final target = paths.versionDir(version);
-    if (!force && isInstalled(version)) return target;
+    if (!force && isInstalled(version)) {
+      _verbose.log(
+        VerboseArea.install,
+        () => 'Dart $version is already at ${target.path}; nothing to do',
+      );
+      return target;
+    }
 
     final platform = _hostPlatform();
     final resolvedChannel = channel ?? await releases.channelFor(version);
@@ -82,6 +93,13 @@ class SdkInstaller implements Installer {
       version: version,
       platform: platform,
     );
+    _verbose.log(
+      VerboseArea.install,
+      () => 'installing Dart $version from ${resolvedChannel.token} for '
+          '${platform.os}-${platform.arch}',
+    );
+    _verbose.log(VerboseArea.install, () => '  archive ${artifact.archive}');
+    _verbose.log(VerboseArea.install, () => '  checksum ${artifact.checksum}');
 
     // One scratch directory per attempt, so two dvm processes installing
     // different versions at once cannot tread on each other's downloads.
@@ -89,6 +107,7 @@ class SdkInstaller implements Installer {
       fileSystem.path.join(paths.cacheDir.path, _scratchName(version)),
     );
     scratch.createSync(recursive: true);
+    _verbose.log(VerboseArea.fs, () => 'created scratch ${scratch.path}');
 
     try {
       final zip = fileSystem.file(
@@ -101,11 +120,22 @@ class SdkInstaller implements Installer {
       final unpacked = fileSystem.directory(
         fileSystem.path.join(scratch.path, 'unpacked'),
       );
+      _verbose.log(
+        VerboseArea.install,
+        () => 'extracting ${zip.path} into ${unpacked.path}',
+      );
+      final extracting = _verbose.stopwatch();
       final modes = await _extractor.extract(
         archive: zip,
         destination: unpacked,
       );
+      _verbose.log(
+        VerboseArea.install,
+        () => '  ${modes.length} files in '
+            '${extracting!.elapsedMilliseconds}ms',
+      );
       final sdkRoot = sdkRootWithin(unpacked, paths.dartExecutableName);
+      _verbose.log(VerboseArea.install, () => '  SDK root ${sdkRoot.path}');
 
       // Modes are applied before the rename so that what lands in versions/ is
       // already usable; an SDK published with a non-executable bin/dart would
@@ -128,11 +158,21 @@ class SdkInstaller implements Installer {
       // The one publishing step. Both sides live under ~/.dvm, so this is a
       // same-filesystem rename and therefore atomic.
       sdkRoot.renameSync(target.path);
+      _verbose.log(
+        VerboseArea.fs,
+        () => 'renamed ${sdkRoot.path} -> ${target.path} (the atomic publish)',
+      );
       return target;
     } finally {
       // The scratch directory holds a ~225MB zip and a full extracted SDK.
       // Leaving either behind on failure would quietly fill the user's disk.
-      if (scratch.existsSync()) scratch.deleteSync(recursive: true);
+      if (scratch.existsSync()) {
+        scratch.deleteSync(recursive: true);
+        _verbose.log(
+          VerboseArea.fs,
+          () => 'removed scratch ${scratch.path}',
+        );
+      }
     }
   }
 

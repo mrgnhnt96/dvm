@@ -89,6 +89,7 @@ class SetupCommand extends Command<int> {
     final writer = ShimWriter(
       fileSystem: context.fileSystem,
       paths: context.paths,
+      verbose: context.verbose,
     );
     final shim = await writer.write(binary.path);
 

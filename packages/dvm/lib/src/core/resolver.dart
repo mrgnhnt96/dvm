@@ -5,6 +5,7 @@ import 'channel.dart';
 import 'config.dart';
 import 'exceptions.dart';
 import 'paths.dart';
+import 'verbose.dart';
 
 /// Which of the five resolution rules produced an SDK.
 ///
@@ -92,13 +93,19 @@ class VersionResolver {
     required this.config,
     required this.dvmrc,
     required Map<String, String> environment,
-  }) : _environment = environment;
+    VerboseLog? verbose,
+  })  : _environment = environment,
+        _verbose = verbose ?? VerboseLog.disabled;
 
   final FileSystem fileSystem;
   final DvmPaths paths;
   final ConfigStore config;
   final DvmrcStore dvmrc;
   final Map<String, String> _environment;
+
+  /// Where the walk explains itself. Off unless the user asked, and every
+  /// message is built lazily: this runs on every `dart` on the machine.
+  final VerboseLog _verbose;
 
   /// The CI / one-off escape hatch, checked before anything on disk.
   static const String versionVariable = 'DVM_DART_VERSION';
@@ -114,6 +121,11 @@ class VersionResolver {
   /// [from] is the directory `.dvmrc` lookup walks up from — the working
   /// directory of the command being run, not necessarily dvm's own.
   ResolvedSdk resolve({required Directory from}) {
+    _verbose.log(
+      VerboseArea.resolve,
+      () => 'resolving a Dart SDK for ${from.path}',
+    );
+
     // Read the config at most once per resolution: the hot path should not
     // stat config.json more than it has to, and rules 1-3 may all need it.
     final settings = _LazyConfig(config);
@@ -121,6 +133,10 @@ class VersionResolver {
     // 1. The environment variable.
     final fromEnvironment = _environment[versionVariable]?.trim();
     if (fromEnvironment != null && fromEnvironment.isNotEmpty) {
+      _verbose.log(
+        VerboseArea.resolve,
+        () => 'rule 1 ($versionVariable): matched "$fromEnvironment"',
+      );
       return _fromPin(
         fromEnvironment,
         rule: ResolutionRule.environmentVariable,
@@ -128,6 +144,10 @@ class VersionResolver {
         settings: settings,
       );
     }
+    _verbose.log(
+      VerboseArea.resolve,
+      () => 'rule 1 ($versionVariable): not set',
+    );
 
     // 2. The nearest .dvmrc.
     final rcFile = dvmrc.findNearest(from);
@@ -136,6 +156,10 @@ class VersionResolver {
       // the global default. A user who typo'd their pin has to be told.
       final pin = dvmrc.read(rcFile);
       if (pin != null) {
+        _verbose.log(
+          VerboseArea.resolve,
+          () => 'rule 2 (.dvmrc): ${rcFile.path} pins "$pin"',
+        );
         return _fromPin(
           pin,
           rule: ResolutionRule.dvmrc,
@@ -144,10 +168,16 @@ class VersionResolver {
         );
       }
     }
+    _verbose.log(VerboseArea.resolve, () => 'rule 2 (.dvmrc): no pin applies');
 
     // 3. The global default.
     final global = settings.value.global;
     if (global != null && global.isNotEmpty) {
+      _verbose.log(
+        VerboseArea.resolve,
+        () => 'rule 3 (global default): ${paths.configFile.path} '
+            'says "$global"',
+      );
       return _fromPin(
         global,
         rule: ResolutionRule.globalDefault,
@@ -155,12 +185,28 @@ class VersionResolver {
         settings: settings,
       );
     }
+    _verbose.log(
+      VerboseArea.resolve,
+      () => 'rule 3 (global default): no "global" in '
+          '${paths.configFile.path}',
+    );
 
     // 4. The next real dart on PATH.
     final onPath = findDartOnPath();
-    if (onPath != null) return onPath;
+    if (onPath != null) {
+      _verbose.log(
+        VerboseArea.resolve,
+        () => 'rule 4 (dart on PATH): chose ${onPath.executable.path} '
+            'from ${onPath.source}',
+      );
+      return onPath;
+    }
 
     // 5. Nothing applies.
+    _verbose.log(
+      VerboseArea.resolve,
+      () => 'rule 5: nothing applies; giving up',
+    );
     throw ResolutionException(_nothingAppliesMessage(from));
   }
 
@@ -196,7 +242,7 @@ class VersionResolver {
       );
     }
 
-    return ResolvedSdk(
+    final resolved = ResolvedSdk(
       rule: rule,
       sdkDir: sdkDir,
       executable: executable,
@@ -204,6 +250,12 @@ class VersionResolver {
       requested: pin,
       source: source,
     );
+    _verbose.log(
+      VerboseArea.resolve,
+      () => 'selected ${resolved.sdkDir.path} '
+          '(${resolved.executable.path}) — ${resolved.describe()}',
+    );
+    return resolved;
   }
 
   String _pinPhrase(String pin, String version) =>
@@ -213,6 +265,11 @@ class VersionResolver {
   String _toConcreteVersion(String pin, _LazyConfig settings, String source) {
     var current = pin;
     final seen = <String>{};
+    // Every name walked through, so the log can show the whole trail rather
+    // than only its two ends. Built even when the log is off — it is at most
+    // [_maxAliasHops] short strings and the loop needs the same information
+    // to detect a cycle.
+    final trail = <String>[pin];
 
     for (var hop = 0; hop < _maxAliasHops; hop++) {
       if (!seen.add(current)) {
@@ -225,22 +282,40 @@ class VersionResolver {
       final channel = Channel.tryParse(current);
       if (channel != null) {
         final version = settings.value.versionForChannel(channel);
-        if (version == null) {
-          throw SdkNotInstalledException(
-            'The "${channel.token}" channel is requested by $source but no '
-            '${channel.token} SDK has been installed, so dvm does not know '
-            'which version that is. Run: dvm install ${channel.token}',
-            version: channel.token,
-            source: source,
+        if (version != null) {
+          if (version != current) trail.add(version);
+          _verbose.log(
+            VerboseArea.resolve,
+            () => '  "$pin" is Dart $version '
+                '(${trail.join(' -> ')}; "${channel.token}" is a channel, '
+                'read from ${paths.configFile.path} where install recorded '
+                'it — never from the network)',
           );
+          return version;
         }
-        return version;
+        throw SdkNotInstalledException(
+          'The "${channel.token}" channel is requested by $source but no '
+          '${channel.token} SDK has been installed, so dvm does not know '
+          'which version that is. Run: dvm install ${channel.token}',
+          version: channel.token,
+          source: source,
+        );
       }
 
       final alias = settings.value.aliases[current];
       // Not an alias and not a channel: it is a concrete version.
-      if (alias == null) return current;
+      if (alias == null) {
+        _verbose.log(
+          VerboseArea.resolve,
+          () => trail.length == 1
+              ? '  "$pin" is already a concrete version'
+              : '  "$pin" is Dart $current (${trail.join(' -> ')}, '
+                  'through aliases in ${paths.configFile.path})',
+        );
+        return current;
+      }
       current = alias;
+      trail.add(alias);
     }
 
     throw ConfigException(
@@ -262,7 +337,13 @@ class VersionResolver {
   /// Public so `doctor` can report what rule 4 would pick.
   ResolvedSdk? findDartOnPath() {
     final rawPath = _environment['PATH'] ?? _environment['Path'];
-    if (rawPath == null || rawPath.isEmpty) return null;
+    if (rawPath == null || rawPath.isEmpty) {
+      _verbose.log(
+        VerboseArea.resolve,
+        () => 'rule 4 (dart on PATH): PATH is empty',
+      );
+      return null;
+    }
 
     final shims = _canonical(paths.shimsDir.path);
     final separator = _isWindows ? ';' : ':';
@@ -275,7 +356,13 @@ class VersionResolver {
       // (a) the shims directory itself, however it happens to be spelled:
       // `~/.dvm/shims`, `$HOME/.dvm/./shims/` and the absolute path are the
       // same directory and all three turn up in real PATHs.
-      if (_canonical(directory.path) == shims) continue;
+      if (_canonical(directory.path) == shims) {
+        _verbose.log(
+          VerboseArea.resolve,
+          () => '  $trimmed -> skipped, it is the dvm shims directory',
+        );
+        continue;
+      }
 
       for (final name in paths.pathExecutableNames) {
         final candidate = fileSystem.file(
@@ -286,12 +373,30 @@ class VersionResolver {
         final resolved = _resolveLinks(candidate.path);
         // (b) a symlink pointing into the shims directory — what
         // `ln -s ~/.dvm/shims/dart ~/.local/bin/dart` leaves behind.
-        if (_canonical(fileSystem.path.dirname(resolved)) == shims) continue;
+        if (_canonical(fileSystem.path.dirname(resolved)) == shims) {
+          _verbose.log(
+            VerboseArea.resolve,
+            () => '  ${candidate.path} -> skipped, it links into the shims '
+                'directory ($resolved)',
+          );
+          continue;
+        }
         // (c) a *copy* of the shim, which no path comparison can catch.
-        if (_looksLikeShim(candidate)) continue;
+        if (_looksLikeShim(candidate)) {
+          _verbose.log(
+            VerboseArea.resolve,
+            () => '  ${candidate.path} -> skipped, its contents are a copy '
+                'of a dvm shim',
+          );
+          continue;
+        }
 
         final binDir = fileSystem.path.dirname(resolved);
         final sdkDir = fileSystem.directory(fileSystem.path.dirname(binDir));
+        _verbose.log(
+          VerboseArea.resolve,
+          () => '  ${candidate.path} -> real dart at $resolved',
+        );
         return ResolvedSdk(
           rule: ResolutionRule.pathFallback,
           sdkDir: sdkDir,
@@ -300,6 +405,10 @@ class VersionResolver {
         );
       }
     }
+    _verbose.log(
+      VerboseArea.resolve,
+      () => 'rule 4 (dart on PATH): nothing on PATH is a non-shim dart',
+    );
     return null;
   }
 

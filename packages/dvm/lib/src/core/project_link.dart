@@ -5,6 +5,7 @@ import 'package:file/local.dart';
 import 'package:path/path.dart' as p;
 
 import 'exceptions.dart';
+import 'verbose.dart';
 
 /// Points [link] at [target], replacing whatever link was there before.
 ///
@@ -21,7 +22,9 @@ Link linkProjectSdk({
   required Link link,
   required Directory target,
   SdkLinker? linker,
+  VerboseLog? verbose,
 }) {
+  final log = verbose ?? VerboseLog.disabled;
   final fileSystem = link.fileSystem;
   link.parent.createSync(recursive: true);
 
@@ -31,6 +34,11 @@ Link linkProjectSdk({
   // too, so a junction from a previous `dvm use` is replaced the same way.
   final existing = fileSystem.typeSync(link.path, followLinks: false);
   if (existing == FileSystemEntityType.link) {
+    log.log(
+      VerboseArea.fs,
+      () => 'replacing the existing link at ${link.path} '
+          '(was -> ${link.targetSync()})',
+    );
     link.deleteSync();
   } else if (existing != FileSystemEntityType.notFound) {
     throw ConfigException(
@@ -40,6 +48,7 @@ Link linkProjectSdk({
   }
 
   (linker ?? defaultSdkLinker(fileSystem)).create(link, target);
+  log.log(VerboseArea.fs, () => 'linked ${link.path} -> ${target.path}');
   return link;
 }
 

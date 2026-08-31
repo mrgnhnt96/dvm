@@ -5,6 +5,7 @@ import 'channel.dart';
 import 'paths.dart';
 import 'platform.dart';
 import 'releases.dart';
+import 'verbose.dart';
 
 /// Puts SDKs into `~/.dvm/versions` and says whether one is already there.
 ///
@@ -42,6 +43,7 @@ Installer createInstaller({
   required HostPlatform Function() hostPlatform,
   required StringSink progress,
   required bool progressIsTerminal,
+  VerboseLog? verbose,
 }) =>
     SdkInstaller(
       fileSystem: fileSystem,
@@ -50,4 +52,5 @@ Installer createInstaller({
       hostPlatform: hostPlatform,
       progress: progress,
       progressIsTerminal: progressIsTerminal,
+      verbose: verbose,
     );

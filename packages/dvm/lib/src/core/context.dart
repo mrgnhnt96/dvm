@@ -8,6 +8,7 @@ import 'process.dart';
 import 'releases.dart';
 import 'resolver.dart';
 import 'updater.dart';
+import 'verbose.dart';
 
 /// Everything a command is allowed to touch, handed to it at construction.
 ///
@@ -37,6 +38,7 @@ class DvmContext {
     required this.out,
     required this.err,
     required this.outIsTerminal,
+    required this.verbose,
   });
 
   /// Builds a context from the pieces that vary, wiring up the rest.
@@ -52,17 +54,26 @@ class DvmContext {
     required StringSink err,
     bool outIsTerminal = false,
     String executablePath = '',
+    VerboseLog? verbose,
     ReleaseClient? releases,
     Installer? installer,
     ProcessRunner? processes,
     Updater? updater,
   }) {
+    // Built here when the caller did not supply one so that a context wired
+    // by a test is verbose-capable without every test having to say so. It
+    // starts off unless the environment asks otherwise; `dvm --verbose` flips
+    // it in [DvmCommandRunner], after this point.
+    final log = verbose ??
+        VerboseLog(sink: err, enabled: VerboseLog.enabledIn(environment));
+
     final paths = DvmPaths(fileSystem: fileSystem, environment: environment);
-    final config = ConfigStore(fileSystem: fileSystem, paths: paths);
-    final dvmrc = DvmrcStore(fileSystem: fileSystem);
+    final config =
+        ConfigStore(fileSystem: fileSystem, paths: paths, verbose: log);
+    final dvmrc = DvmrcStore(fileSystem: fileSystem, verbose: log);
     // Lazy: an unsupported host must not stop `dvm --help` from printing.
     HostPlatform hostPlatform() => HostPlatform.detect(platformVersion);
-    final releaseClient = releases ?? createReleaseClient();
+    final releaseClient = releases ?? createReleaseClient(verbose: log);
     return DvmContext(
       fileSystem: fileSystem,
       environment: environment,
@@ -75,6 +86,7 @@ class DvmContext {
         config: config,
         dvmrc: dvmrc,
         environment: environment,
+        verbose: log,
       ),
       releases: releaseClient,
       installer: installer ??
@@ -86,8 +98,9 @@ class DvmContext {
             // Download progress is normal output, not a diagnostic.
             progress: out,
             progressIsTerminal: outIsTerminal,
+            verbose: log,
           ),
-      processes: processes ?? createProcessRunner(),
+      processes: processes ?? createProcessRunner(verbose: log),
       updater: updater ??
           Updater(
             fileSystem: fileSystem,
@@ -99,6 +112,7 @@ class DvmContext {
       out: out,
       err: err,
       outIsTerminal: outIsTerminal,
+      verbose: log,
     );
   }
 
@@ -130,6 +144,10 @@ class DvmContext {
 
   /// Errors and diagnostics.
   final StringSink err;
+
+  /// The verbose channel: off unless `--verbose` or `DVM_VERBOSE` asked for
+  /// it, and always writing to stderr so that no command's stdout changes.
+  final VerboseLog verbose;
 
   /// Whether [out] is a terminal a human is watching, rather than a file, a
   /// pipe or a CI log.

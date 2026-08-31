@@ -44,7 +44,13 @@ class ExecCommand extends Command<int> {
       fileSystem: context.fileSystem,
       sdk: sdk,
       environment: context.environment,
+      verbose: context.verbose,
     );
+    // The line the whole DVM_VERBOSE story exists for. A build script or a CI
+    // job reaches dvm through the PATH shim — `exec dvm exec dart "$@"` — and
+    // this is where a log can be made to say which SDK actually answered, and
+    // which file said so.
+    describeSdkChoice(context, sdk);
 
     final command = arguments.first;
     final executable = invocation.lookup(command);
