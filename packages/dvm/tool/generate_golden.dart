@@ -6,6 +6,13 @@
 // output line deliberately changes; if it moves because colour was added, that
 // is the bug the golden exists to catch.
 //
+// It writes LF on every platform, which is the convention the golden is read
+// with: `StringBuffer.writeln` appends `\n` and never the host's terminator,
+// and `writeAsStringSync` encodes those bytes without translating them. So
+// regenerating on Windows cannot produce a golden that only matches on
+// Windows. `.gitattributes` pins the file to `-text` so git does not undo
+// that on the way through a checkout.
+//
 // Usage, from `packages/dvm`:  dart run tool/generate_golden.dart
 import 'dart:io';
 

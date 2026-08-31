@@ -13,8 +13,23 @@ final RegExp _ansi = RegExp(r'\x1B\[[0-9;]*m');
 String _strip(String text) => text.replaceAll(_ansi, '');
 
 /// The golden lives beside this file; `dart test` runs from the package root.
-String _golden() =>
-    io.File('test/commands/color_off_golden.txt').readAsStringSync();
+///
+/// CRLF is undone on the way IN, and only on the golden. Git's Windows default
+/// (`core.autocrlf=true`, which the windows-latest runner uses) rewrites LF to
+/// CRLF on checkout, so a tracked golden can reach disk carrying `\r\n` that
+/// nobody committed — and it did, which is what turned this group red on
+/// Windows and nowhere else. `.gitattributes` pins the golden to `-text` so
+/// this stops happening at the source; undoing it here as well means the next
+/// fixture added without an attributes entry does not reintroduce it.
+///
+/// The ACTUAL output is deliberately left alone. This group's entire claim is
+/// that not one byte of dvm's uncoloured output moved, so normalising both
+/// sides would let a real `\r\n` regression in what dvm prints slip past. Only
+/// `\r\n` is collapsed, never a bare `\r`, which the progress bar emits on
+/// purpose.
+String _golden() => io.File('test/commands/color_off_golden.txt')
+    .readAsStringSync()
+    .replaceAll('\r\n', '\n');
 
 void main() {
   group('colour off is byte-identical to the output before colour existed', () {
