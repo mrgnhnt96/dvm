@@ -1,6 +1,7 @@
 import '../archive/dart_archive_client.dart';
 import 'channel.dart';
 import 'platform.dart';
+import 'verbose.dart';
 
 /// A downloadable SDK archive and the checksum that proves it arrived intact.
 class ReleaseArtifact {
@@ -65,4 +66,5 @@ abstract class ReleaseClient {
 ///
 /// The archive client is built by its own part of the CLI; this is the one
 /// line that names it, so `lib/dvm.dart` never has to.
-ReleaseClient createReleaseClient() => DartArchiveClient();
+ReleaseClient createReleaseClient({VerboseLog? verbose}) =>
+    DartArchiveClient(verbose: verbose);

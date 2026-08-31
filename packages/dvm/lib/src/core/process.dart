@@ -1,4 +1,5 @@
 import 'runner.dart';
+import 'verbose.dart';
 
 /// Runs the resolved SDK's binaries.
 ///
@@ -17,4 +18,5 @@ abstract class ProcessRunner {
 }
 
 /// The seam `lib/dvm.dart` calls to get a [ProcessRunner].
-ProcessRunner createProcessRunner() => const OsProcessRunner();
+ProcessRunner createProcessRunner({VerboseLog? verbose}) =>
+    OsProcessRunner(verbose: verbose);

@@ -6,6 +6,7 @@ import 'package:pub_semver/pub_semver.dart';
 import '../core/channel.dart';
 import '../core/platform.dart';
 import '../core/releases.dart';
+import '../core/verbose.dart';
 import 'dart_archive_exception.dart';
 
 /// The [ReleaseClient] for the `dart-archive` Google Cloud Storage bucket.
@@ -19,9 +20,11 @@ class DartArchiveClient implements ReleaseClient {
     http.Client? httpClient,
     Uri? objectBase,
     Uri? listApi,
+    VerboseLog? verbose,
   })  : _injectedHttp = httpClient,
         _objectBase = objectBase ?? defaultObjectBase,
-        _listApi = listApi ?? defaultListApi;
+        _listApi = listApi ?? defaultListApi,
+        _verbose = verbose ?? VerboseLog.disabled;
 
   /// Where `channels/<channel>/release/...` objects are served from.
   static final Uri defaultObjectBase =
@@ -34,6 +37,7 @@ class DartArchiveClient implements ReleaseClient {
   final http.Client? _injectedHttp;
   final Uri _objectBase;
   final Uri _listApi;
+  final VerboseLog _verbose;
 
   /// Built on first use, not at construction. `DvmContext.wire` makes one of
   /// these on every `dvm` invocation, including the `dvm exec dart` the PATH
@@ -167,13 +171,24 @@ class DartArchiveClient implements ReleaseClient {
   }
 
   Future<http.Response> _get(Uri url, String what) async {
+    _verbose.log(VerboseArea.net, () => 'GET $url  ($what)');
+    final elapsed = _verbose.stopwatch();
+    final http.Response response;
     try {
-      return await _http.get(url);
+      response = await _http.get(url);
     } on http.ClientException catch (error) {
+      _verbose.log(VerboseArea.net, () => '  failed: ${error.message}');
       throw DartArchiveException(
         'Could not reach the Dart archive to look up $what: ${error.message}',
       );
     }
+    _verbose.log(
+      VerboseArea.net,
+      () => '  HTTP ${response.statusCode}, '
+          '${response.bodyBytes.length} bytes, '
+          '${elapsed!.elapsedMilliseconds}ms',
+    );
+    return response;
   }
 
   String _httpFailure(Uri url, http.Response response, String what) =>

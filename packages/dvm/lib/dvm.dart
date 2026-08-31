@@ -29,6 +29,7 @@ import 'src/core/installer.dart';
 import 'src/core/process.dart';
 import 'src/core/releases.dart';
 import 'src/core/updater.dart';
+import 'src/core/verbose.dart';
 import 'src/gen/version.dart';
 
 export 'src/core/channel.dart';
@@ -42,6 +43,7 @@ export 'src/core/process.dart';
 export 'src/core/releases.dart';
 export 'src/core/resolver.dart';
 export 'src/core/updater.dart';
+export 'src/core/verbose.dart';
 export 'src/gen/version.dart';
 
 /// Bad usage — `EX_USAGE` from sysexits(3).
@@ -68,15 +70,27 @@ Future<int> run(
 }) async {
   final output = out ?? stdout;
   final errors = err ?? stderr;
+  final env = environment ?? Platform.environment;
   // Asked here and nowhere else: this is the only place that knows whether
   // [output] is the process's own stdout. An injected sink belongs to the
   // caller and is never assumed to be a terminal, so the default a test sees
   // is the one CI sees.
   final terminal = outIsTerminal ?? (out == null && stdout.hasTerminal);
 
+  // Read before anything is wired, so a run turned on by the environment is
+  // verbose from its first line. The `--verbose` FLAG cannot be honoured this
+  // early — the command runner owns the parser that knows about it — so it
+  // switches this same object on instead, in [DvmCommandRunner.runCommand].
+  final verbose = VerboseLog(
+    // stderr, always: `dvm which` and everything behind the shim have their
+    // stdout read by other programs.
+    sink: errors,
+    enabled: VerboseLog.enabledIn(env),
+  );
+
   final context = DvmContext.wire(
     fileSystem: fileSystem ?? const LocalFileSystem(),
-    environment: environment ?? Platform.environment,
+    environment: env,
     platformVersion: platformVersion ?? Platform.version,
     out: output,
     err: errors,
@@ -84,6 +98,7 @@ Future<int> run(
     // `resolvedExecutable`, not `executable`: the latter can be a bare name
     // found on PATH, and `dvm update` has to rename over a real path.
     executablePath: executablePath ?? Platform.resolvedExecutable,
+    verbose: verbose,
     releases: releases,
     installer: installer,
     processes: processes,
@@ -125,6 +140,17 @@ class DvmCommandRunner extends CommandRunner<int> {
         'version-check',
         defaultsTo: true,
         help: 'Notice when a newer dvm has been released.',
+      )
+      // Top-level rather than per-command so that every subcommand inherits it
+      // and `dvm --help` is where somebody finds it. `${VerboseLog.variable}` is
+      // the other way in, and it is the only way in for a `dart` arriving
+      // through the PATH shim, where nobody is typing a dvm command line.
+      ..addFlag(
+        'verbose',
+        abbr: 'v',
+        negatable: false,
+        help: 'Explain what dvm is doing, on stderr. '
+            'Also enabled by ${VerboseLog.variable}=1.',
       );
 
     addCommand(InstallCommand(context: context));
@@ -153,6 +179,20 @@ class DvmCommandRunner extends CommandRunner<int> {
 
   @override
   Future<int?> runCommand(ArgResults topLevelResults) async {
+    // First, before anything can decide anything: a run asked to explain
+    // itself has to explain the whole run, including the version check below.
+    if (topLevelResults.flag('verbose')) context.verbose.enable();
+    context.verbose.log(
+      VerboseArea.cli,
+      () => 'dvm ${version()} in ${context.workingDirectory.path}',
+    );
+    context.verbose.log(
+      VerboseArea.cli,
+      () => 'command: ${topLevelResults.command?.name ?? '(none)'}'
+          '${topLevelResults.command == null ? '' : ' '
+              '${topLevelResults.command!.rest.join(' ')}'}',
+    );
+
     if (topLevelResults.flag('version')) {
       context.out.writeln('dvm ${version()}');
       return 0;

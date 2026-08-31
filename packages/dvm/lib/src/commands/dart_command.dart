@@ -2,7 +2,9 @@ import 'package:args/args.dart';
 import 'package:args/command_runner.dart';
 
 import '../core/context.dart';
+import '../core/resolver.dart';
 import '../core/runner.dart';
+import '../core/verbose.dart';
 
 /// `dvm dart` — Run dart from the resolved SDK.
 class DartCommand extends Command<int> {
@@ -31,7 +33,9 @@ class DartCommand extends Command<int> {
       fileSystem: context.fileSystem,
       sdk: sdk,
       environment: context.environment,
+      verbose: context.verbose,
     );
+    describeSdkChoice(context, sdk);
 
     return context.processes.run(
       sdk.executable.path,
@@ -40,6 +44,25 @@ class DartCommand extends Command<int> {
       workingDirectory: context.workingDirectory.path,
     );
   }
+}
+
+/// Says on the verbose channel which SDK is about to run, and what chose it.
+///
+/// Shared by `dvm dart` and `dvm exec` because they are the two ways into an
+/// SDK and a log that only covered one of them would be worse than none: the
+/// shim goes through `exec`, so that is the path a CI log sees, and the two
+/// must not be able to disagree about how they report themselves.
+void describeSdkChoice(DvmContext context, ResolvedSdk sdk) {
+  context.verbose.log(
+    VerboseArea.exec,
+    () => 'running ${sdk.executable.path}',
+  );
+  context.verbose.log(
+    VerboseArea.exec,
+    () => '  chosen by ${sdk.rule.label}'
+        '${sdk.source == null ? '' : ' (${sdk.source})'}'
+        '${sdk.version == null ? '' : ', Dart ${sdk.version}'}',
+  );
 }
 
 /// What actually reaches the child, given everything after the dvm command.

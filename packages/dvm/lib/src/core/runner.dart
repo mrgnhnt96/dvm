@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import 'process.dart';
 import 'resolver.dart';
+import 'verbose.dart';
 
 /// The real [ProcessRunner]: the code path every `dart` invocation on the
 /// machine goes through once the shim is installed.
@@ -25,7 +26,11 @@ import 'resolver.dart';
 ///   or a script does not; without forwarding that kills the wrapper and leaves
 ///   the real work orphaned.
 class OsProcessRunner implements ProcessRunner {
-  const OsProcessRunner();
+  const OsProcessRunner({VerboseLog? verbose}) : _verbose = verbose;
+
+  /// Where the spawn is described, when anything asked. Nullable rather than a
+  /// disabled instance so that `const OsProcessRunner()` stays const.
+  final VerboseLog? _verbose;
 
   /// The signals a wrapper is expected to pass on, on THIS platform.
   ///
@@ -56,6 +61,27 @@ class OsProcessRunner implements ProcessRunner {
     Map<String, String>? environment,
     String? workingDirectory,
   }) async {
+    final verbose = _verbose;
+    verbose?.log(
+      VerboseArea.proc,
+      () => 'spawn $executable ${arguments.join(' ')}',
+    );
+    verbose?.log(
+      VerboseArea.proc,
+      // Null means "inherit dvm's own", which `Process.start` does.
+      () => '  cwd: ${workingDirectory ?? '(inherited)'}',
+    );
+    verbose?.logAll(
+      VerboseArea.proc,
+      () => [
+        for (final entry in (environment ?? const <String, String>{}).entries)
+          // The OVERLAY only. `Process.start` merges these over the real
+          // environment, so this is exactly what dvm changed and nothing else.
+          '  env override: ${entry.key}=${entry.value}',
+      ],
+    );
+    final elapsed = verbose?.stopwatch();
+
     final process = await Process.start(
       executable,
       arguments,
@@ -63,6 +89,7 @@ class OsProcessRunner implements ProcessRunner {
       workingDirectory: workingDirectory,
       mode: ProcessStartMode.inheritStdio,
     );
+    verbose?.log(VerboseArea.proc, () => '  pid ${process.pid}');
 
     final forwarding = <StreamSubscription<ProcessSignal>>[];
     for (final signal in _signals) {
@@ -71,7 +98,13 @@ class OsProcessRunner implements ProcessRunner {
     }
 
     try {
-      return await process.exitCode;
+      final code = await process.exitCode;
+      verbose?.log(
+        VerboseArea.proc,
+        () => '  pid ${process.pid} exited $code '
+            'after ${elapsed!.elapsedMilliseconds}ms',
+      );
+      return code;
     } finally {
       // Cancelling puts the default disposition back. It matters because
       // watching SIGINT is what stopped Ctrl-C from killing dvm itself while
@@ -121,11 +154,14 @@ class SdkInvocation {
     required this.fileSystem,
     required this.sdk,
     required Map<String, String> environment,
-  }) : _parent = environment;
+    VerboseLog? verbose,
+  })  : _parent = environment,
+        _verbose = verbose ?? VerboseLog.disabled;
 
   final FileSystem fileSystem;
   final ResolvedSdk sdk;
   final Map<String, String> _parent;
+  final VerboseLog _verbose;
 
   /// The directory holding the resolved `dart`.
   ///
@@ -166,9 +202,19 @@ class SdkInvocation {
     // as given rather than searched for.
     if (_isPathLike(command)) {
       final file = fileSystem.file(command);
-      return file.existsSync() ? file : null;
+      final found = file.existsSync();
+      _verbose.log(
+        VerboseArea.exec,
+        () => '"$command" contains a separator, so it is used as a path '
+            '(${found ? 'exists' : 'does not exist'})',
+      );
+      return found ? file : null;
     }
 
+    _verbose.log(
+      VerboseArea.exec,
+      () => 'looking for "$command" on the CHILD PATH: $path',
+    );
     for (final entry in path.split(_separator)) {
       final directory = entry.trim();
       if (directory.isEmpty) continue;
@@ -176,9 +222,19 @@ class SdkInvocation {
         final candidate = fileSystem.file(
           fileSystem.path.join(directory, name),
         );
-        if (candidate.existsSync()) return candidate;
+        if (candidate.existsSync()) {
+          _verbose.log(
+            VerboseArea.exec,
+            () => '  found at ${candidate.path}',
+          );
+          return candidate;
+        }
       }
     }
+    _verbose.log(
+      VerboseArea.exec,
+      () => '  "$command" is on none of those directories',
+    );
     return null;
   }
 

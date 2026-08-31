@@ -5,6 +5,7 @@ import 'package:file/file.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/releases.dart';
+import '../core/verbose.dart';
 import 'dart_archive_exception.dart';
 
 /// Streams an SDK archive to disk and proves it arrived intact.
@@ -18,9 +19,11 @@ class SdkDownloader {
     required StringSink progress,
     bool progressIsTerminal = false,
     http.Client? httpClient,
+    VerboseLog? verbose,
   })  : _injectedHttp = httpClient,
         _progress = progress,
-        _progressIsTerminal = progressIsTerminal;
+        _progressIsTerminal = progressIsTerminal,
+        _verbose = verbose ?? VerboseLog.disabled;
 
   final FileSystem fileSystem;
   final StringSink _progress;
@@ -33,6 +36,7 @@ class SdkDownloader {
   final bool _progressIsTerminal;
 
   final http.Client? _injectedHttp;
+  final VerboseLog _verbose;
 
   /// Built on first use; see [DartArchiveClient] for why that matters.
   late final http.Client _http = _injectedHttp ?? http.Client();
@@ -43,10 +47,21 @@ class SdkDownloader {
   /// not match, so a corrupted or tampered archive is never handed on to be
   /// extracted.
   Future<void> download(ReleaseArtifact artifact, File destination) async {
+    _verbose.log(
+      VerboseArea.install,
+      () => 'downloading ${artifact.fileName} to ${destination.path}',
+    );
     final expected = await _expectedChecksum(artifact);
+    _verbose.log(VerboseArea.net, () => '  expected sha256 $expected');
 
     destination.parent.createSync(recursive: true);
+    final elapsed = _verbose.stopwatch();
     final actual = await _streamToFile(artifact.archive, destination);
+    _verbose.log(
+      VerboseArea.install,
+      () => '  wrote ${destination.lengthSync()} bytes in '
+          '${elapsed!.elapsedMilliseconds}ms, sha256 $actual',
+    );
 
     if (actual != expected) {
       // Deleting here rather than leaving it for the caller means the bad
@@ -69,6 +84,7 @@ class SdkDownloader {
   /// checksum for a different platform's archive would otherwise fail later
   /// with a mismatch that reads like corruption.
   Future<String> _expectedChecksum(ReleaseArtifact artifact) async {
+    _verbose.log(VerboseArea.net, () => 'GET ${artifact.checksum}');
     final http.Response response;
     try {
       response = await _http.get(artifact.checksum);
@@ -78,6 +94,10 @@ class SdkDownloader {
         '${error.message}',
       );
     }
+    _verbose.log(
+      VerboseArea.net,
+      () => '  HTTP ${response.statusCode}',
+    );
     if (response.statusCode != 200) {
       throw DartArchiveException(
         'The Dart archive returned HTTP ${response.statusCode} for the '
@@ -85,6 +105,10 @@ class SdkDownloader {
       );
     }
 
+    _verbose.log(
+      VerboseArea.net,
+      () => '  checksum body: ${response.body.trim()}',
+    );
     final parts = response.body.trim().split(RegExp(r'\s+'));
     if (parts.length < 2 || !RegExp(r'^[0-9a-f]{64}$').hasMatch(parts.first)) {
       throw DartArchiveException(
@@ -104,6 +128,7 @@ class SdkDownloader {
 
   /// Writes [url] into [destination], returning the hex sha256 of what arrived.
   Future<String> _streamToFile(Uri url, File destination) async {
+    _verbose.log(VerboseArea.net, () => 'GET $url');
     final http.StreamedResponse response;
     try {
       response = await _http.send(http.Request('GET', url));
@@ -112,6 +137,12 @@ class SdkDownloader {
         'Could not download $url: ${error.message}',
       );
     }
+    _verbose.log(
+      VerboseArea.net,
+      () => '  HTTP ${response.statusCode}, '
+          'content-length ${response.contentLength ?? '(unknown)'}, '
+          'to ${destination.path}',
+    );
     if (response.statusCode != 200) {
       throw DartArchiveException(
         'The Dart archive returned HTTP ${response.statusCode} for $url.',

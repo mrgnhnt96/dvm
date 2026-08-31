@@ -216,6 +216,42 @@ print the line and exit 1 rather than guess at a path.
   turns on `strict-casts`, `strict-inference`, and `strict-raw-types`.
 - Comments explain *why*, not *what*. Match the density of the file you are in.
 
+## Saying what it did — `-v` / `DVM_VERBOSE`
+
+dvm is silent by design, and that silence has a cost: when it misbehaves there is
+nothing to read but the source. The verbose channel is the way out. It is off by
+default and turned on by either `dvm -v <command>` — a flag on the `CommandRunner`,
+so every subcommand inherits it — or `DVM_VERBOSE` in the environment, set to any
+non-empty value other than `0`/`false`. They are an OR, not a precedence order.
+
+The environment variable is not a convenience. Anything reaching dvm **through the
+shim** never sees a dvm command line at all: `~/.dvm/shims/dart` is
+`exec dvm exec dart "$@"`, so a CI job that wants its log to say which SDK actually
+ran has no flag to pass. That case is why the variable exists.
+
+`VerboseLog` (`lib/src/core/verbose.dart`) is an ordinary injected collaborator on
+`DvmContext`, constructed in `lib/dvm.dart` beside `out` and `err` and handed to
+everything below. Deliberately **not** a global logger or a service locator — this
+file rules those out everywhere else and the exception would not stay one. A
+collaborator built outside the composition root gets `VerboseLog.disabled`, so a
+test that does not care never has to say so.
+
+Three properties are load-bearing:
+
+- **It writes to stderr, always.** `dvm which` and `dvm list` are read by scripts,
+  and `dvm exec` hands the child dvm's own stdio — a tool parsing `dart --version`
+  must not receive dvm's chatter on stdout. The non-verbose stdout of every command
+  is byte-for-byte what it was, and a test asserts exactly that.
+- **It costs nothing when off.** Messages are callbacks, not strings: resolution
+  runs on every `dart` invocation on the machine once the shim is installed, and a
+  silent run must not build text it discards. `VerboseLog.stopwatch()` returns null
+  while the log is off, for the same reason.
+- **It decides nothing.** Every line describes a choice already made. Resolution
+  order, exit codes and output are unchanged by turning it on.
+
+Lines are prefixed `[dvm <area>]` — `resolve`, `exec`, `net`, `fs`, `proc`,
+`install`, `cli` — so a log can be grepped down to one concern.
+
 ## Command surface
 
 | Command | Behavior |
