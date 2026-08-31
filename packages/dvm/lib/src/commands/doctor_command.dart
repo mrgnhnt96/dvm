@@ -122,7 +122,10 @@ class DoctorCommand extends Command<int> {
   /// first and the shim never runs, which looks exactly like dvm doing nothing.
   List<DoctorFinding> _checkPath(ShellFacts shell) {
     final shims = context.paths.shimsDir;
-    final line = shell.pathLine(shims);
+    // The shims directory alone: this check is about whether `dart` resolves
+    // to the shim. Whether `dvm` itself is on PATH is not in question here —
+    // doctor is being run, so it plainly is.
+    final line = shell.pathLine([shims]);
     final raw = context.environment['PATH'] ?? context.environment['Path'];
 
     if (raw == null || raw.isEmpty) {

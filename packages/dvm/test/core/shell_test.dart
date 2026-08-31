@@ -51,13 +51,45 @@ void main() {
       final shims = fileSystem.directory('/dvm/shims');
 
       expect(
-        factsFor({'SHELL': '/bin/zsh'}).pathLine(shims),
+        factsFor({'SHELL': '/bin/zsh'}).pathLine([shims]),
         r'export PATH="/dvm/shims:$PATH"',
       );
       expect(
-        factsFor({'SHELL': '/usr/bin/fish'}).pathLine(shims),
+        factsFor({'SHELL': '/usr/bin/fish'}).pathLine([shims]),
         'fish_add_path --prepend /dvm/shims',
       );
+    });
+
+    test('covers several directories with ONE line, in the order given', () {
+      final shims = fileSystem.directory('/dvm/shims');
+      final bin = fileSystem.directory('/dvm/bin');
+
+      expect(
+        factsFor({'SHELL': '/bin/zsh'}).pathLine([shims, bin]),
+        r'export PATH="/dvm/shims:/dvm/bin:$PATH"',
+      );
+      expect(
+        factsFor({'SHELL': '/usr/bin/fish'}).pathLine([shims, bin]),
+        'fish_add_path --prepend /dvm/shims /dvm/bin',
+      );
+    });
+
+    // THE REGRESSION GUARD. A startup file that assigns an EXPANDED absolute
+    // PATH throws away everything PATH held before the line runs — including
+    // whatever the user's own earlier lines added — silently, on every login.
+    // The raw string is the point: it asserts the six characters `$PATH` are
+    // in the file, not the value they expand to here.
+    test(r'leaves $PATH literal, whatever the line covers', () {
+      final line = factsFor({'SHELL': '/bin/zsh'}).pathLine([
+        fileSystem.directory('/dvm/shims'),
+        fileSystem.directory('/dvm/bin'),
+      ]);
+
+      expect(line, endsWith(r':$PATH"'));
+      expect(line, contains(r'$PATH'));
+      // The failure this rules out: the absolute PATH of the process that
+      // wrote the line, baked in where the variable belongs.
+      expect(line, isNot(contains('/usr/bin:')));
     });
   });
 
@@ -90,7 +122,8 @@ void main() {
     });
 
     test('the PATH line edits the user environment', () {
-      final line = windowsFacts().pathLine(windows.directory(r'C:\dvm\shims'));
+      final line =
+          windowsFacts().pathLine([windows.directory(r'C:\dvm\shims')]);
 
       expect(line, contains('SetEnvironmentVariable'));
       expect(line, contains(r'C:\dvm\shims;'));
@@ -103,7 +136,7 @@ void main() {
 
     test('a quote in the path is escaped rather than ending the string', () {
       final line = windowsFacts()
-          .pathLine(windows.directory(r"C:\Users\o'brien\.dvm\shims"));
+          .pathLine([windows.directory(r"C:\Users\o'brien\.dvm\shims")]);
 
       expect(line, contains(r"C:\Users\o''brien\.dvm\shims;"));
     });
@@ -124,7 +157,7 @@ void main() {
 
       expect(facts.kind, ShellKind.bash);
       expect(
-        facts.pathLine(windows.directory(r'C:\dvm\shims')),
+        facts.pathLine([windows.directory(r'C:\dvm\shims')]),
         startsWith('export PATH='),
       );
     });
