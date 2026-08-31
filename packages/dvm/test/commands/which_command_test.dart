@@ -168,15 +168,37 @@ void main() {
       expect(firstLine, '/project/sdk-home/versions/3.9.0/bin/dart');
     });
 
-    test('the human-readable SDK: line does follow the normal rule', () async {
+    test('the human-readable SDK: line names the store, so it is absolute too',
+        () async {
       sdkInsideTheWorkingDirectory();
 
       expect(await harness.run(['which']), 0);
 
-      // Under /project, which is the working directory, so relative — this is
-      // what makes the two assertions above a real carve-out rather than a
-      // restatement of what the rule would have done anyway.
-      expect(harness.output, contains('SDK: sdk-home/versions/3.9.0'));
+      // This line USED to read `SDK: sdk-home/versions/3.9.0`, because the dvm
+      // home was contrived to sit inside the working directory and the display
+      // rule relativized whatever was under it. That is the same defect as
+      // `Installed Dart 3.13.2 to .dvm/versions/3.13.2`: the SDK STORE printing
+      // relative because of where the reader happens to stand. It is the store
+      // whichever line names it, so it is absolute here as well.
+      expect(harness.output, contains('SDK: /project/sdk-home/versions/3.9.0'));
+      expect(harness.output, isNot(contains('SDK: sdk-home/versions')));
+    });
+
+    test('a dart found on PATH is not dvm\'s, so it follows the normal rule',
+        () async {
+      // The carve-out above is still a real one, and this is what keeps it
+      // honest: an SDK dvm does not manage is not under the dvm home, so it
+      // relativizes like any other path when it sits under the working
+      // directory. Absolute output is not simply what every path does now.
+      harness.fileSystem.file('/project/tools/bin/dart')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('#!/bin/sh\n');
+      harness.environment['PATH'] = '/project/tools/bin';
+
+      expect(await harness.run(['which']), 0);
+
+      expect(harness.output, contains('SDK: tools'));
+      expect(harness.output, contains('rule 4 of 5'));
     });
   });
 

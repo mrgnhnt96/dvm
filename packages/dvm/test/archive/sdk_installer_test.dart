@@ -266,6 +266,7 @@ class _HalfwayExtractor implements SdkExtractor {
   Future<Map<String, int>> extract({
     required File archive,
     required Directory destination,
+    ExtractionProgress? onProgress,
   }) async {
     this.destination = destination.path;
     final fs = destination.fileSystem;

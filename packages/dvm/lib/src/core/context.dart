@@ -1,6 +1,7 @@
 import 'package:file/file.dart';
 
 import 'config.dart';
+import 'exceptions.dart';
 import 'installer.dart';
 import 'paths.dart';
 import 'platform.dart';
@@ -176,13 +177,18 @@ class DvmContext {
   /// absolute rather than becoming `~/…`: both were considered and declined,
   /// because counting `..` segments is work the absolute path does not ask for.
   ///
-  /// WHAT MUST NEVER COME THROUGH HERE — three kinds of path, and the rule is
+  /// WHAT MUST NEVER PRINT RELATIVE — three kinds of path, and the rule is
   /// about what the path NAMES, not where it happens to sit:
   ///
   ///  * a PATH entry (`~/.dvm/shims`, `~/.dvm/bin`),
   ///  * a shell startup file, or a backup of one (`~/.zshrc`, `~/.profile`),
   ///  * anything in the dvm home — the SDK store, `config.json`, the shim, the
   ///    dvm binary itself.
+  ///
+  /// The third kind is now ENFORCED here rather than left to each caller: see
+  /// [_isInDvmHome]. Everything in the dvm home is under one root, so this
+  /// method can recognise the whole category without the caller having to know
+  /// which kind of path it is holding.
   ///
   /// This USED to be phrased as "the SDK store needs no special case, it is
   /// never inside a project". That reasoning was wrong, and it shipped: it
@@ -197,10 +203,24 @@ class DvmContext {
   /// A relative PATH entry is worse than ugly: a shell resolves it against
   /// whatever directory each process happens to be in.
   ///
-  /// So `commands/setup_command.dart` calls this NOWHERE — every path it names
-  /// is one of the three above — and `commands/doctor_command.dart` calls it
-  /// only for `.dvmrc` and `.dvm/dart_sdk`, which are project files and are the
-  /// case this method exists for. `test/commands/home_cwd_output_test.dart`
+  /// `commands/setup_command.dart` therefore calls this NOWHERE — every path it
+  /// names is one of the three above — and `commands/doctor_command.dart` calls
+  /// it only for project files, which are the case this method exists for.
+  ///
+  /// But NOT calling it was the whole defence, and it did not hold. `install`
+  /// went on printing `Installed Dart 3.13.2 to .dvm/versions/3.13.2` long
+  /// after `doctor` and `setup` were fixed, and the audit that found it found
+  /// seven more: `list`, `remove`, `global`, `alias`, `which` and `use` all
+  /// routed the SDK store or `config.json` through here. A convention upheld by
+  /// remembering it at every call site is not upheld. The first two kinds above
+  /// are still the caller's job — a `~/.zshrc` is not under the dvm home — but
+  /// they live in one command, which is a much smaller thing to remember.
+  ///
+  /// One collision is accepted rather than carved out: if a project's root IS
+  /// `\$HOME`, its `.dvm/dart_sdk` symlink sits inside `~/.dvm` and prints
+  /// absolute like anything else there. Naming exceptions by filename would put
+  /// back exactly the per-call-site knowledge this removes, and an absolute
+  /// path there is merely longer, where a relative SDK store is wrong. `test/commands/home_cwd_output_test.dart`
   /// pins both commands' output with the working directory set to `\$HOME`,
   /// which is the case nobody thought to try.
   ///
@@ -235,6 +255,36 @@ class DvmContext {
       context.isAbsolute(path) ? path : context.join(base, path),
     );
     if (!context.isWithin(base, target)) return path;
+    // The dvm home is never relativized, wherever the user is standing. This
+    // is the rule ENFORCED rather than remembered: it used to hold only
+    // because each call site was individually careful not to call this method,
+    // which is why `dvm install` still printed `Installed Dart 3.13.2 to
+    // .dvm/versions/3.13.2` long after `doctor` and `setup` were fixed. One
+    // directory printing two ways depending on where the reader stands is the
+    // bug, and a caller cannot reintroduce it now without going around this
+    // method entirely.
+    if (_isInDvmHome(target)) return target;
     return context.relative(target, from: base);
+  }
+
+  /// Whether [target] — absolute and normalized — is the dvm home or inside it.
+  ///
+  /// Covers the SDK store, `config.json`, the shims and bin directories that go
+  /// on PATH, the cache, and the dvm binary itself, because every one of them
+  /// lives under the one root. A caller therefore does not have to know which
+  /// category a path falls into, which is exactly the knowledge the old rule
+  /// depended on and did not have.
+  bool _isInDvmHome(String target) {
+    final context = fileSystem.path;
+    final String home;
+    try {
+      home = context.normalize(paths.home.absolute.path);
+    } on ConfigException {
+      // Neither DVM_HOME nor HOME is set. Constructing [DvmPaths] is allowed
+      // to fail that way so `dvm --help` works on such a machine, and
+      // formatting a path must not be the thing that finally throws.
+      return false;
+    }
+    return context.equals(home, target) || context.isWithin(home, target);
   }
 }

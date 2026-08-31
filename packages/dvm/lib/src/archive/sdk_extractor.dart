@@ -5,6 +5,9 @@ import 'package:file/file.dart';
 
 import 'dart_archive_exception.dart';
 
+/// Reports extraction progress as `(bytesWritten, bytesTotal)`.
+typedef ExtractionProgress = void Function(int completed, int total);
+
 /// Unpacks an SDK zip into a directory.
 ///
 /// A seam rather than a bare function call so that a test can make an extract
@@ -15,9 +18,17 @@ abstract class SdkExtractor {
   /// Returns the unix mode recorded in the zip for each extracted path. The
   /// modes are returned rather than applied because applying them is a
   /// platform-specific step the caller may skip entirely — see [ModeApplier].
+  ///
+  /// [onProgress] is called with `(bytesWritten, bytesTotal)` — UNCOMPRESSED
+  /// bytes — once before any entry is written and again after each one. It
+  /// exists because extracting a 215MB SDK is the longest stretch of an
+  /// install and used to print nothing at all: the download bar reached 100%
+  /// and the process then went silent, which reads as a hang precisely
+  /// because the user has just been told the work finished.
   Future<Map<String, int>> extract({
     required File archive,
     required Directory destination,
+    ExtractionProgress? onProgress,
   });
 }
 
@@ -29,6 +40,7 @@ class ZipSdkExtractor implements SdkExtractor {
   Future<Map<String, int>> extract({
     required File archive,
     required Directory destination,
+    ExtractionProgress? onProgress,
   }) async {
     final Archive decoded;
     try {
@@ -41,6 +53,17 @@ class ZipSdkExtractor implements SdkExtractor {
 
     destination.createSync(recursive: true);
     final modes = <String, int>{};
+
+    // Bytes rather than entries-completed, which was the obvious unit and is
+    // measurably the worse one. A real 3.13.2 macos-arm64 SDK is 1044 entries
+    // and 622MB uncompressed, and the sizes are wildly uneven: thousands of
+    // tiny files flash past while a handful of big snapshots take ~170ms each.
+    // Measured on that archive, the longest a percentage sat still was 616ms
+    // counting entries against 168ms counting bytes — the entry counter stalls
+    // exactly where the user is most likely to think it has hung.
+    var written = 0;
+    final total = _uncompressedBytes(decoded, destination);
+    onProgress?.call(0, total);
 
     for (final entry in decoded) {
       final target = _safeJoin(destination, entry.name);
@@ -58,9 +81,28 @@ class ZipSdkExtractor implements SdkExtractor {
       file.parent.createSync(recursive: true);
       file.writeAsBytesSync(entry.readBytes() ?? const <int>[]);
       modes[target] = entry.mode;
+
+      written += entry.size;
+      onProgress?.call(written, total);
     }
 
     return modes;
+  }
+
+  /// How many uncompressed bytes this extraction will actually write.
+  ///
+  /// Skipped entries are excluded by running the same [_safeJoin] check the
+  /// loop does, so a zip carrying escaping entries cannot leave the bar stuck
+  /// short of 100%. Purely lexical and over ~1000 entries, so it costs nothing
+  /// next to the extraction it is measuring.
+  int _uncompressedBytes(Archive decoded, Directory destination) {
+    var total = 0;
+    for (final entry in decoded) {
+      if (entry.isDirectory) continue;
+      if (_safeJoin(destination, entry.name) == null) continue;
+      total += entry.size;
+    }
+    return total;
   }
 
   /// [name] resolved inside [destination], or null if it escapes it.

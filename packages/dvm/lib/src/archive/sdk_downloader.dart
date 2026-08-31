@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../core/releases.dart';
 import '../core/verbose.dart';
 import 'dart_archive_exception.dart';
+import 'progress_bar.dart';
 
 /// Streams an SDK archive to disk and proves it arrived intact.
 ///
@@ -150,7 +151,7 @@ class SdkDownloader {
     }
 
     final total = response.contentLength;
-    final bar = _ProgressBar(
+    final bar = ProgressBar(
       sink: _progress,
       label: destination.basename,
       total: total,
@@ -183,79 +184,4 @@ class SdkDownloader {
     // block above always reaches.
     return digest!.toString();
   }
-}
-
-/// Download progress, in whichever of two shapes the sink can read.
-///
-/// A terminal gets one line repainted with `\r`: a 225MB download is thousands
-/// of chunks, and a scrollback full of percentages is worse than no progress at
-/// all. Anything else — a redirected file, a CI log — gets discrete
-/// newline-terminated lines every [_stepPercent]%, because a carriage return
-/// there does not repaint anything: it concatenates all 101 states into a
-/// single unreadable ~20KB line.
-class _ProgressBar {
-  _ProgressBar({
-    required this.sink,
-    required this.label,
-    required this.total,
-    required this.isTerminal,
-  });
-
-  final StringSink sink;
-  final String label;
-  final int? total;
-  final bool isTerminal;
-
-  /// How far the download has to move before a non-terminal sink is told
-  /// again. Eleven lines describe a download; a thousand bury the log.
-  static const int _stepPercent = 10;
-
-  int _lastPercent = -1;
-
-  void update(int received) {
-    if (total == null || total == 0) return;
-    final percent = _percentOf(received);
-
-    if (isTerminal) {
-      if (percent == _lastPercent) return;
-      _lastPercent = percent;
-      sink.write('\r${_line(received, percent)}');
-      return;
-    }
-
-    // The first update always prints, so a log says a download started even if
-    // it is then interrupted.
-    if (_lastPercent >= 0 && percent - _lastPercent < _stepPercent) return;
-    _lastPercent = percent;
-    sink.writeln(_line(received, percent));
-  }
-
-  void finish(int received) {
-    if (total == null || total == 0) {
-      sink.writeln('  $label  ${_mb(received)} MB');
-      return;
-    }
-
-    if (isTerminal) {
-      update(received);
-      // Ends the line the repaints have been rewriting, so whatever prints
-      // next starts on its own.
-      sink.writeln();
-      return;
-    }
-
-    // The throttle must not be what decides whether the log records that the
-    // download completed, so the last line is written regardless of step.
-    final percent = _percentOf(received);
-    if (percent == _lastPercent) return;
-    _lastPercent = percent;
-    sink.writeln(_line(received, percent));
-  }
-
-  int _percentOf(int received) => (received * 100 ~/ total!).clamp(0, 100);
-
-  String _line(int received, int percent) =>
-      '  $label  $percent%  (${_mb(received)} / ${_mb(total!)} MB)';
-
-  static String _mb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(1);
 }
