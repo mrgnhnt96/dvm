@@ -193,6 +193,144 @@ run this again."
   fi
 }
 
+# --- a `dvm` that is not the one we just installed -----------------------------
+#
+# The chicken-and-egg this section exists for: `dvm doctor` and `dvm setup`
+# both detect a shadowing `dvm` correctly and completely — and a shadowing
+# `dvm` is exactly what stops either of them from running. A shell function or
+# alias is resolved before PATH is ever searched, so the binary this script
+# just wrote is never reached, and the user sees an error from the OTHER dvm
+# with nothing tying it back to their install. install.sh is the only thing
+# that executes before the shadow can bite, so the scan has to live here too.
+#
+# It only ever REPORTS. `dvm setup --write-path-line` is the thing that edits a
+# startup file, and it already refuses to write into a shadowed shell.
+
+# Prints every shadowing line in the startup file "$1", as
+# `<file>:<line>: <text>   (<what it is>)` — the same shape `dvm doctor` uses,
+# so a user who sees both sees one answer twice rather than two answers.
+#
+# Silent for a file that is not there and for one that cannot be read. Both are
+# ordinary — a fresh machine has few of these, and a root-owned .profile is
+# readable by nobody — and neither is worth failing an install that worked.
+scan_rc_file() {
+  if [ ! -f "$1" ] || [ ! -r "$1" ]; then
+    return 0
+  fi
+
+  # awk rather than a `while read` loop: awk counts the line number itself (NR),
+  # and `read` mangles backslashes unless every call is `-r`, which is the kind
+  # of detail that differs between dash and busybox ash.
+  #
+  # The patterns are the ones in scanForShadows() /  _classify() in
+  # packages/dvm/lib/src/core/shell.dart. POSIX ERE has no \b, so each
+  # word-boundary case is spelled as "end of line, or a character that cannot
+  # continue an identifier".
+  awk -v file="$1" '
+    {
+      text = $0
+      sub(/^[ \t]+/, "", text)
+      sub(/[ \t]+$/, "", text)
+
+      # A commented-out definition is what a user leaves behind after fixing
+      # this. Reporting it would send them back to a file already correct.
+      if (text == "" || substr(text, 1, 1) == "#") next
+
+      kind = ""
+      if (text ~ /\.dvm\/scripts\/dvm$/ || text ~ /\.dvm\/scripts\/dvm[^A-Za-z0-9_]/) {
+        kind = "a line sourcing the older cbracken/dvm shell script"
+      } else if (text ~ /^alias[ \t]+dvm[ \t]*=/) {
+        kind = "a shell alias named dvm"
+      } else if (text ~ /^dvm[ \t]*\([ \t]*\)/) {
+        kind = "a shell function named dvm"
+      } else if (text ~ /^function[ \t]+dvm$/ || text ~ /^function[ \t]+dvm[^A-Za-z0-9_]/) {
+        kind = "a shell function named dvm"
+      }
+      if (kind == "") next
+
+      printf "%s:%d: %s   (%s)\n", file, NR, text, kind
+    }
+  ' "$1" 2> /dev/null || true
+}
+
+# Prints the shadowing lines across every startup file under the home "$1".
+#
+# The candidate list is rcCandidates in packages/dvm/lib/src/core/shell.dart,
+# and deliberately is not narrowed by $SHELL: a `dvm` function left in .zshrc
+# is what breaks a zsh login even when the shell running this script is not zsh.
+scan_startup_files() {
+  [ -n "$1" ] || return 0
+
+  for rc_name in .zshrc .zshenv .zprofile .zlogin .bashrc .bash_profile \
+    .bash_login .profile .config/fish/config.fish; do
+    scan_rc_file "$1/${rc_name}"
+  done
+}
+
+# Prints the older cbracken/dvm's leftovers under the dvm home "$1".
+#
+# That tool keeps its SDKs in `darts/`, its shell function in `scripts/dvm` and
+# per-project setups in `environments/`, all inside the same ~/.dvm this script
+# installs into. Their presence is a warning and not a failure: they sit
+# alongside a working install, and `dvm migrate` imports them.
+scan_legacy_install() {
+  if [ -f "$1/scripts/dvm" ]; then
+    echo "$1/scripts/dvm  (sourcing this is what defines the function)"
+  fi
+  for legacy_name in darts environments; do
+    if [ -d "$1/${legacy_name}" ]; then
+      echo "$1/${legacy_name}"
+    fi
+  done
+  return 0
+}
+
+# The closing warning. "$1" is the user's home, "$2" the dvm home.
+#
+# Prints nothing when there is nothing to say, and NEVER changes the exit
+# status: the binary is on disk and it is good. Refusing to install over a
+# startup file this script is not going to edit would be a worse outcome than a
+# warning, so this warns loudly and returns 0.
+warn_about_shadows() {
+  shadow_lines="$(scan_startup_files "$1")"
+  legacy_lines="$(scan_legacy_install "$2")"
+
+  if [ -n "${shadow_lines}" ]; then
+    info ""
+    info "!! Your shell already defines its own \`dvm\`."
+    info ""
+    info "   A shell function or alias is resolved before PATH is ever"
+    info "   searched, so the dvm just installed will NOT run — \`dvm setup\`"
+    info "   would run the other one and fail with an error that looks"
+    info "   unrelated to this install."
+    info ""
+    echo "${shadow_lines}" | sed 's/^/   /'
+    info ""
+    info "   Fix it in this order:"
+    info ""
+    info "     1. comment out the line(s) above"
+    info "     2. start a new shell"
+    info "     3. then run  dvm setup --write-path-line"
+    info ""
+    info "   Step 1 first, and not for tidiness: until it is done, \`dvm setup"
+    info "   --write-path-line\` refuses to write anything, because a function"
+    info "   or alias beats PATH and the line would change nothing while"
+    info "   looking like it worked."
+  fi
+
+  if [ -n "${legacy_lines}" ]; then
+    info ""
+    info "!! An older dvm (cbracken/dvm) shares $2:"
+    info ""
+    echo "${legacy_lines}" | sed 's/^/   /'
+    info ""
+    info "   Nothing of it was touched. Once the \`dvm\` command reaches the"
+    info "   binary above, import its SDKs with:  dvm migrate"
+  fi
+
+  return 0
+}
+
 main() {
   target="$(detect_target)"
   asset="dvm-${target}.zip"
@@ -242,18 +380,48 @@ asset; try again, and if it keeps happening do not install it."
   info "dvm ${tag} is installed at ${bin_dir}/dvm"
   info ""
 
+  # TWO DIRECTORIES, TWO LINES, and they are not interchangeable. This one puts
+  # ${bin_dir} on PATH, which is what makes the `dvm` command resolvable at all
+  # — so it has to be added before dvm can be asked to do anything, and it is
+  # the user's to add. `dvm setup --write-path-line` writes the OTHER line, for
+  # ${dvm_home}/shims (see shimsDir in packages/dvm/lib/src/core/paths.dart and
+  # _writePathLine in setup_command.dart), which is what makes `dart` and
+  # `flutter` resolve to the shims. Saying the flag covers both would be false
+  # and would leave the user with a dvm they cannot invoke.
   case ":${PATH}:" in
     *":${bin_dir}:"*)
-      info "Next: run  dvm setup  to install the dart shim."
+      info "Next: run  dvm setup --write-path-line"
+      info ""
+      info "That installs the dart shim and adds ${dvm_home}/shims to PATH for"
+      info "you, backing your startup file up first. Plain  dvm setup  prints"
+      info "the line for you to add by hand instead."
       ;;
     *)
       info "Add this to your shell startup file (~/.zshrc, ~/.bashrc, ...):"
       info ""
       info "  export PATH=\"${bin_dir}:\$PATH\""
       info ""
-      info "Then start a new shell and run  dvm setup  to install the dart shim."
+      info "That line is what makes the \`dvm\` command itself resolvable, so it"
+      info "has to be yours — there is nothing dvm can run until it is there."
+      info ""
+      info "Then start a new shell and run:"
+      info ""
+      info "  dvm setup --write-path-line"
+      info ""
+      info "which installs the dart shim and adds a SECOND line, for:"
+      info ""
+      info "  ${dvm_home}/shims"
+      info ""
+      info "dvm writes that one for you, backing the file up first. It is a"
+      info "different directory from the line above and does not replace it."
+      info "Plain  dvm setup  prints it instead of writing it."
       ;;
   esac
+
+  # Last, so it is the last thing on screen: the reason the two lines above may
+  # not be enough. This can only warn — it never touches a startup file, and it
+  # never changes the exit status.
+  warn_about_shadows "${HOME:-}" "${dvm_home}"
 }
 
 # A seam for tool/test_install_sh.sh, which sources this file to exercise the

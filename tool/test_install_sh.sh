@@ -331,6 +331,215 @@ else
   unset DVM_VERSION
 fi
 
+
+# --- a shadowing dvm ----------------------------------------------------------
+
+# The failure this covers, exactly as it happened: install.sh finished cleanly,
+# told the user to run `dvm setup`, and `dvm setup` ran the OLDER cbracken/dvm
+# because ~/.zshrc:107 sources its shell script and a function beats PATH. The
+# scan below is what turns "bad option: -t" into a file and a line number.
+shadow_home="$(mktemp -d)"
+mkdir -p "${shadow_home}/.config/fish"
+
+# A .zshrc whose 107th line is the one that bit the user. Every line before it
+# is filler so the reported number has to be counted and cannot be guessed.
+i=1
+while [ "${i}" -lt 107 ]; do
+  echo "# filler line ${i}"
+  i=$((i + 1))
+done > "${shadow_home}/.zshrc"
+printf '%s\n' '[ -s "$HOME/.dvm/scripts/dvm" ] && . "$HOME/.dvm/scripts/dvm"' \
+  >> "${shadow_home}/.zshrc"
+
+check "legacy source line is found" "0" \
+  "$(scan_rc_file "${shadow_home}/.zshrc" | grep -q 'sourcing the older cbracken/dvm' \
+    && echo 0 || echo 1)"
+
+# The whole point of the message: a file AND a line, not "found something".
+check "legacy source line reports .zshrc:107" "${shadow_home}/.zshrc:107" \
+  "$(scan_rc_file "${shadow_home}/.zshrc" | sed -n 's/^\([^ ]*:[0-9]*\):.*/\1/p')"
+
+check "legacy source line quotes the line itself" "0" \
+  "$(scan_rc_file "${shadow_home}/.zshrc" \
+    | grep -qF '. "$HOME/.dvm/scripts/dvm"' && echo 0 || echo 1)"
+
+# A function definition, in each of the spellings that actually appear.
+for definition in 'dvm() {' 'dvm () {' 'dvm(){' 'function dvm {' 'function dvm() {'; do
+  printf '%s\n  echo hi\n}\n' "${definition}" > "${shadow_home}/.bashrc"
+  check "function definition [${definition}] is found" "0" \
+    "$(scan_rc_file "${shadow_home}/.bashrc" | grep -q 'a shell function named dvm' \
+      && echo 0 || echo 1)"
+done
+
+printf 'alias dvm="~/bin/dvm"\n' > "${shadow_home}/.bash_profile"
+check "alias is found" "0" \
+  "$(scan_rc_file "${shadow_home}/.bash_profile" | grep -q 'a shell alias named dvm' \
+    && echo 0 || echo 1)"
+check "alias reports its line" "${shadow_home}/.bash_profile:1" \
+  "$(scan_rc_file "${shadow_home}/.bash_profile" | sed -n 's/^\([^ ]*:[0-9]*\):.*/\1/p')"
+
+# FALSE POSITIVES. A startup file that merely mentions dvm is the common case,
+# and warning about it sends the user to edit a file that is already correct.
+cat > "${shadow_home}/.profile" << 'CLEAN'
+# dvm lives in ~/.dvm/bin
+export PATH="$HOME/.dvm/bin:$PATH"
+dvm use 3.5.0
+alias dvmx="dvm --verbose"
+# dvm() { echo the old one; }
+# alias dvm=nope
+echo "run dvm setup"
+DVM_HOME="$HOME/.dvm"
+CLEAN
+check "a clean startup file warns about nothing" "" \
+  "$(scan_rc_file "${shadow_home}/.profile")"
+
+# Missing and unreadable files are ordinary, not errors.
+check "a missing startup file is silent" "" \
+  "$(scan_rc_file "${shadow_home}/.does-not-exist")"
+
+printf 'dvm() { echo hi; }\n' > "${shadow_home}/.zprofile"
+chmod 000 "${shadow_home}/.zprofile"
+if [ -r "${shadow_home}/.zprofile" ]; then
+  # Running as root, where chmod 000 does not make a file unreadable.
+  echo "skip unreadable-file check: this user can read a 000 file"
+else
+  check "an unreadable startup file is silent" "" \
+    "$(scan_rc_file "${shadow_home}/.zprofile")"
+  check "an unreadable startup file does not fail the run" "0" \
+    "$(scan_rc_file "${shadow_home}/.zprofile" > /dev/null 2>&1; echo $?)"
+fi
+chmod 644 "${shadow_home}/.zprofile"
+
+# The whole-home sweep reaches every candidate, and .zprofile is readable again.
+check "the sweep reaches .zshrc, .bashrc, .bash_profile and .zprofile" "4" \
+  "$(scan_startup_files "${shadow_home}" | wc -l | tr -d ' ')"
+
+check "the sweep on a home with no startup files is silent" "" \
+  "$(scan_startup_files "$(mktemp -d)")"
+
+check "the sweep with no home at all is silent" "" "$(scan_startup_files "")"
+
+# --- the older cbracken/dvm sharing ~/.dvm ------------------------------------
+
+legacy_home="$(mktemp -d)/.dvm"
+mkdir -p "${legacy_home}/scripts" "${legacy_home}/darts" "${legacy_home}/environments"
+printf 'dvm() { echo old; }\n' > "${legacy_home}/scripts/dvm"
+
+check "legacy install is detected" "3" \
+  "$(scan_legacy_install "${legacy_home}" | wc -l | tr -d ' ')"
+check "legacy install names the script" "0" \
+  "$(scan_legacy_install "${legacy_home}" | grep -q "scripts/dvm" && echo 0 || echo 1)"
+check "a dvm home with none of it is silent" "" \
+  "$(scan_legacy_install "$(mktemp -d)")"
+
+# --- the closing message ------------------------------------------------------
+
+if ! command -v zip > /dev/null 2>&1; then
+  echo "skip closing-message checks: no zip on this machine"
+else
+  fake_uname_s="Linux"
+  fake_uname_m="x86_64"
+  e2e_target="linux-x64"
+  msgdir="$(mktemp -d)"
+  fixtures="${msgdir}/good"
+  make_fixture "${fixtures}" dvm ok
+
+  DVM_VERSION="0.2.0"
+  export DVM_VERSION
+
+  # A home with nothing shadowing dvm in it.
+  clean_home="${msgdir}/clean-home"
+  mkdir -p "${clean_home}"
+  printf 'export PATH="$HOME/bin:$PATH"\n' > "${clean_home}/.zshrc"
+
+  clean_status=0
+  clean_out="$(HOME="${clean_home}" DVM_HOME="${msgdir}/clean-dvm" main 2>&1)" \
+    || clean_status=$?
+
+  check "a clean install still exits 0" "0" "${clean_status}"
+  check "a clean install prints no shadow warning" "1" \
+    "$(echo "${clean_out}" | grep -q 'already defines its own' && echo 0 || echo 1)"
+
+  # The flag the user had to find out about the hard way.
+  check "a clean install names --write-path-line" "0" \
+    "$(echo "${clean_out}" | grep -q 'dvm setup --write-path-line' && echo 0 || echo 1)"
+  check "a clean install still prints the bin PATH line" "0" \
+    "$(echo "${clean_out}" | grep -q "export PATH=\"${msgdir}/clean-dvm/bin:" \
+      && echo 0 || echo 1)"
+  # The two lines are different directories, and the message has to say so
+  # rather than letting the flag look like it covers both.
+  check "a clean install names the shims directory too" "0" \
+    "$(echo "${clean_out}" | grep -q "${msgdir}/clean-dvm/shims" && echo 0 || echo 1)"
+
+  # The other branch of the same case: ~/.dvm/bin is already on PATH, so there
+  # is no line to hand out — but the flag still has to be named, because that
+  # is the branch a second install lands in and it is where the user was told
+  # only "run dvm setup".
+  onpath_out="$(HOME="${clean_home}" DVM_HOME="${msgdir}/onpath-dvm" \
+    PATH="${msgdir}/onpath-dvm/bin:${PATH}" main 2>&1)"
+
+  check "the already-on-PATH branch names --write-path-line" "0" \
+    "$(echo "${onpath_out}" | grep -q 'dvm setup --write-path-line' && echo 0 || echo 1)"
+  check "the already-on-PATH branch hands out no PATH line" "1" \
+    "$(echo "${onpath_out}" | grep -q 'export PATH=' && echo 0 || echo 1)"
+
+  # The same install into a home that has the user's .zshrc:107 in it.
+  shadowed_home="${msgdir}/shadowed-home"
+  mkdir -p "${shadowed_home}"
+  i=1
+  while [ "${i}" -lt 107 ]; do
+    echo "# filler line ${i}"
+    i=$((i + 1))
+  done > "${shadowed_home}/.zshrc"
+  printf '%s\n' '[ -s "$HOME/.dvm/scripts/dvm" ] && . "$HOME/.dvm/scripts/dvm"' \
+    >> "${shadowed_home}/.zshrc"
+
+  shadow_status=0
+  shadow_out="$(HOME="${shadowed_home}" DVM_HOME="${msgdir}/shadow-dvm" main 2>&1)" \
+    || shadow_status=$?
+
+  # The binary is good and on disk; a warning is not a reason to fail.
+  check "a shadowed install still exits 0" "0" "${shadow_status}"
+  check "a shadowed install still installs the binary" "0" \
+    "$([ -x "${msgdir}/shadow-dvm/bin/dvm" ] && echo 0 || echo 1)"
+
+  check "a shadowed install says the shell defines its own dvm" "0" \
+    "$(echo "${shadow_out}" | grep -q 'already defines its own' && echo 0 || echo 1)"
+  check "a shadowed install names the file and the line" "0" \
+    "$(echo "${shadow_out}" | grep -q "${shadowed_home}/.zshrc:107:" && echo 0 || echo 1)"
+  check "a shadowed install says to comment the line out" "0" \
+    "$(echo "${shadow_out}" | grep -q 'comment out the line' && echo 0 || echo 1)"
+  check "a shadowed install says to start a new shell" "0" \
+    "$(echo "${shadow_out}" | grep -q 'start a new shell' && echo 0 || echo 1)"
+
+  # --write-path-line REFUSES while a shadow is present (the `blocked:` guard in
+  # setup_command.dart), so the message must order it after the fix rather than
+  # hand the user a flag that is guaranteed to decline.
+  check "a shadowed install defers --write-path-line" "0" \
+    "$(echo "${shadow_out}" | grep -q 'refuses to write' && echo 0 || echo 1)"
+  check "a shadowed install orders the fix first" "0" \
+    "$(echo "${shadow_out}" | grep -q '1. comment out the line' && echo 0 || echo 1)"
+
+  # The legacy layout is a warning with its own remedy, not part of the failure.
+  legacy_dvm="${msgdir}/legacy-dvm"
+  mkdir -p "${legacy_dvm}/scripts" "${legacy_dvm}/darts"
+  printf 'dvm() { echo old; }\n' > "${legacy_dvm}/scripts/dvm"
+
+  legacy_status=0
+  legacy_out="$(HOME="${clean_home}" DVM_HOME="${legacy_dvm}" main 2>&1)" \
+    || legacy_status=$?
+
+  check "a legacy-sharing install still exits 0" "0" "${legacy_status}"
+  check "a legacy-sharing install says so" "0" \
+    "$(echo "${legacy_out}" | grep -q 'older dvm (cbracken/dvm) shares' && echo 0 || echo 1)"
+  check "a legacy-sharing install points at dvm migrate" "0" \
+    "$(echo "${legacy_out}" | grep -q 'dvm migrate' && echo 0 || echo 1)"
+
+  unset DVM_VERSION
+  rm -rf "${msgdir}"
+fi
+
+rm -rf "${shadow_home}"
 # --- result -------------------------------------------------------------------
 
 if [ "${failures}" -ne 0 ]; then
