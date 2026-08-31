@@ -1,0 +1,21 @@
+# Line endings, decided here so they are not decided by whoever cloned.
+#
+# Git's Windows default is `core.autocrlf=true`, which rewrites LF to CRLF on
+# checkout. GitHub's windows-latest runners use it. That is fine for source —
+# and fatal for a file whose exact bytes are the assertion.
+#
+# `packages/dvm/test/commands/color_off_golden.txt` records, byte for byte,
+# what dvm printed before colour existed; `color_test.dart` compares the
+# program's output against it and the whole point is that not one byte moved.
+# Checked out with CRLF, the golden could never match output built from `\n`,
+# so the Windows job went red on a difference git had introduced. `-text`
+# turns EOL conversion off in both directions: the bytes on disk are the bytes
+# committed, on every platform. It does NOT disable diffs — that is the `diff`
+# attribute — so the golden stays reviewable when it legitimately changes.
+*_golden.txt -text
+
+# Shell scripts are read by a POSIX shell, which does not want CR. Pinned to
+# LF so a checkout on Windows cannot produce a script that a WSL or git-bash
+# run then chokes on. `text eol=lf` rather than `-text`: these are ordinary
+# text and should stay diffable and mergeable as text.
+*.sh text eol=lf
