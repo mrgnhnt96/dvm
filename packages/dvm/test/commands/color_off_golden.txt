@@ -1,7 +1,7 @@
 === dvm doctor (a machine with three problems) -> exit 1
 --- stdout
 dvm doctor
-  ok    build: dvm 0.1.0, running from source rather than an installed binary.
+  ok    build: dvm 0.2.0, running from source rather than an installed binary.
   FAIL  PATH: /dvm/shims is on PATH but an entry ahead of it provides a dart, so the shim is never reached.
           PATH order (entries that provide a dart):
             2. /dvm/shims  <- dvm shims
@@ -24,7 +24,7 @@ dvm doctor
 === dvm doctor (a healthy machine) -> exit 1
 --- stdout
 dvm doctor
-  ok    build: dvm 0.1.0, running from source rather than an installed binary.
+  ok    build: dvm 0.2.0, running from source rather than an installed binary.
   ok    PATH: /dvm/shims is on PATH ahead of every other dart.
   FAIL  shims: /dvm/shims/dart is not recognisable as a dvm shim.
           -> Overwrite it with: dvm setup
