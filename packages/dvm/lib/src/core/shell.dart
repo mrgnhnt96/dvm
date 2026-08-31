@@ -197,17 +197,41 @@ class ShellFacts {
     ];
   }
 
-  /// The line to add to [primaryRcFile] so the shims win.
+  /// The single line to add to [primaryRcFile] so [directories] are on PATH,
+  /// ahead of everything already there.
   ///
   /// Prepending is the whole contract: a `dart` earlier on PATH is found first
-  /// and the shim never runs.
-  String pathLine(Directory shims) => switch (kind) {
-        // fish_add_path is idempotent and does the right thing with the
-        // universal path variable, which a bare `set -gx` does not.
-        ShellKind.fish => 'fish_add_path --prepend ${shims.path}',
-        ShellKind.powershell => _powerShellPathLine(shims),
-        _ => 'export PATH="${shims.path}:\$PATH"',
-      };
+  /// and the shim never runs. [directories] keep the order they are given, so
+  /// the caller passes the shims directory first — it is the one with a
+  /// precedence requirement.
+  ///
+  /// ONE line covering several directories rather than one line each. Two
+  /// lines is two things for the user to paste and two chances to paste only
+  /// the first, which is the three-step setup this exists to collapse.
+  ///
+  /// `\$PATH` on the right-hand side stays LITERAL — see [_posixPathLine].
+  String pathLine(List<Directory> directories) {
+    final entries = [for (final directory in directories) directory.path];
+    return switch (kind) {
+      // fish_add_path is idempotent and does the right thing with the
+      // universal path variable, which a bare `set -gx` does not. It takes
+      // several paths, and prepends them in the order given.
+      ShellKind.fish => 'fish_add_path --prepend ${entries.join(' ')}',
+      ShellKind.powershell => _powerShellPathLine(entries),
+      _ => _posixPathLine(entries),
+    };
+  }
+
+  /// `export PATH="<a>:<b>:\$PATH"`.
+  ///
+  /// The `\$PATH` is written literally into the startup file and is expanded
+  /// by the shell, every login, at the point the line runs. Writing the
+  /// EXPANDED value instead would freeze the PATH this process happens to see
+  /// and assign it back — discarding whatever the user's own earlier lines had
+  /// added, silently, on every shell they open. `shell_test.dart` pins the
+  /// literal with a raw string for exactly that reason.
+  String _posixPathLine(List<String> entries) =>
+      'export PATH="${entries.join(':')}:\$PATH"';
 
   /// How the user makes [pathLine] take effect, as the start of a sentence.
   ///
@@ -219,19 +243,51 @@ class ShellFacts {
       ? 'Run this once in PowerShell'
       : 'Add it to your shell startup file';
 
-  /// Prepends [shims] to the user's persistent PATH.
+  /// Prepends [entries] to the user's persistent PATH.
   ///
   /// The `User` scope rather than `Machine`: dvm installs per user and this
   /// needs no elevation. `setx` would be shorter and is the usual advice, but
   /// it truncates the value at 1024 characters, which silently destroys a PATH
   /// that has grown past it.
-  String _powerShellPathLine(Directory shims) {
+  ///
+  /// The existing PATH is READ at run time and concatenated, which is the
+  /// PowerShell spelling of keeping `\$PATH` literal: the value that gets
+  /// stored is the current one plus dvm's, never dvm's alone.
+  String _powerShellPathLine(List<String> entries) {
     // Doubling is PowerShell's escape for a quote inside a single-quoted
     // string. A path is unlikely to contain one and a mangled PATH line is a
     // bad way to find out.
-    final path = shims.path.replaceAll("'", "''");
+    final path = entries.join(';').replaceAll("'", "''");
     return "[Environment]::SetEnvironmentVariable('Path', '$path;' + "
         "[Environment]::GetEnvironmentVariable('Path', 'User'), 'User')";
+  }
+
+  /// Whether [directory] is already an entry in this environment's `PATH`.
+  ///
+  /// The ENVIRONMENT, not the startup file. They answer different questions
+  /// and both are worth asking: `PathLineEditor` asks whether the FILE already
+  /// carries the line, while this asks whether the directory is already in
+  /// effect in the shell the user is standing in. Telling somebody to add a
+  /// line that is already working is the kind of instruction that makes a tool
+  /// look like it is not paying attention.
+  bool isOnPath(Directory directory) {
+    final raw = _environment['PATH'] ?? _environment['Path'];
+    if (raw == null || raw.isEmpty) return false;
+
+    final context = fileSystem.path;
+    // `;` on Windows, `:` everywhere else — and the FILESYSTEM's style again,
+    // for the same reason [DvmPaths.isWindows] uses it.
+    final separator = context.style == p.Style.windows ? ';' : ':';
+    final wanted = context.normalize(directory.path);
+
+    for (final entry in raw.split(separator)) {
+      final trimmed = entry.trim();
+      // An empty entry means "the current directory" to a POSIX shell, not
+      // "no entry", but it is never the directory being asked about.
+      if (trimmed.isEmpty) continue;
+      if (context.equals(wanted, context.normalize(trimmed))) return true;
+    }
+    return false;
   }
 
   /// Reads every candidate startup file, looking for something that would win

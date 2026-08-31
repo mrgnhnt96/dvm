@@ -266,9 +266,17 @@ else
   export DVM_VERSION
 
   # Happy path.
+  #
+  # HOME is pinned to an empty directory rather than inherited. main now scans
+  # the startup files BEFORE it chooses what to print — a shadow changes the
+  # message — so a maintainer whose own ~/.zshrc sources the older cbracken/dvm
+  # would otherwise see a different branch here than CI does.
+  e2e_home="${workdir}/e2e-home"
+  mkdir -p "${e2e_home}"
   fixtures="${workdir}/good"
   make_fixture "${fixtures}" dvm ok
-  DVM_HOME="${workdir}/home-good" \
+  HOME="${e2e_home}" \
+    DVM_HOME="${workdir}/home-good" \
     PATH="${PATH}" \
     output="$( (main) 2>&1 )" || output="MAIN FAILED: ${output}"
 
@@ -277,7 +285,8 @@ else
   check "no temp file left behind" "1" \
     "$([ -e "${workdir}/home-good/bin/dvm.new" ] && echo 0 || echo 1)"
   check "tells the user about PATH" "0" \
-    "$(echo "${output}" | grep -q "export PATH=\"${workdir}/home-good/bin:" \
+    "$(echo "${output}" \
+      | grep -q "export PATH=\"${workdir}/home-good/shims:${workdir}/home-good/bin:" \
       && echo 0 || echo 1)"
 
   # A checksum that does not match must abort before anything is written.
@@ -460,28 +469,62 @@ else
   check "a clean install prints no shadow warning" "1" \
     "$(echo "${clean_out}" | grep -q 'already defines its own' && echo 0 || echo 1)"
 
-  # The flag the user had to find out about the hard way.
-  check "a clean install names --write-path-line" "0" \
-    "$(echo "${clean_out}" | grep -q 'dvm setup --write-path-line' && echo 0 || echo 1)"
-  check "a clean install still prints the bin PATH line" "0" \
-    "$(echo "${clean_out}" | grep -q "export PATH=\"${msgdir}/clean-dvm/bin:" \
+  # OPTION A — one command, by the absolute path this script just wrote. dvm
+  # does not have to be on PATH to be RUN, which is the whole reason the setup
+  # collapses to one step. Asserted as the FULL command: naming the flag alone
+  # would pass on the old three-step message, which named it too.
+  check "a clean install offers the one absolute-path command" "0" \
+    "$(echo "${clean_out}" \
+      | grep -q "${msgdir}/clean-dvm/bin/dvm setup --write-path-line" \
       && echo 0 || echo 1)"
-  # The two lines are different directories, and the message has to say so
-  # rather than letting the flag look like it covers both.
-  check "a clean install names the shims directory too" "0" \
-    "$(echo "${clean_out}" | grep -q "${msgdir}/clean-dvm/shims" && echo 0 || echo 1)"
 
-  # The other branch of the same case: ~/.dvm/bin is already on PATH, so there
-  # is no line to hand out — but the flag still has to be named, because that
-  # is the branch a second install lands in and it is where the user was told
-  # only "run dvm setup".
+  # OPTION B — one line, for someone who would rather dvm did not edit their
+  # files. ONE line covering BOTH directories, not one line each: two lines is
+  # two things to paste and two chances to paste only the first.
+  check "a clean install offers one combined export line" "0" \
+    "$(echo "${clean_out}" \
+      | grep -q "export PATH=\"${msgdir}/clean-dvm/shims:${msgdir}/clean-dvm/bin:" \
+      && echo 0 || echo 1)"
+
+  # THE REGRESSION GUARD, and the reason it is asserted as literal text: a
+  # startup-file line that assigns an EXPANDED absolute PATH discards
+  # everything PATH held before it — silently, on every login, erasing whatever
+  # the user's own earlier lines added. The line must end with the six
+  # characters `$PATH` and a quote, unexpanded. Single quotes below so this
+  # test's own shell does not expand it either.
+  check "the export line keeps \$PATH literal" "0" \
+    "$(echo "${clean_out}" | grep -q 'export PATH="[^"]*:\$PATH"' \
+      && echo 0 || echo 1)"
+  check "the export line did not bake in an expanded PATH" "1" \
+    "$(echo "${clean_out}" | grep -q "export PATH=\"[^\"]*:/usr/bin" \
+      && echo 0 || echo 1)"
+
+  # Absolute paths throughout: the point is a line that can be pasted without
+  # thinking, and `$HOME/.dvm/...` is a line the reader has to resolve first.
+  check "a clean install prints no ~ or \$HOME in its paths" "1" \
+    "$(echo "${clean_out}" | grep -q 'PATH="\$HOME\|PATH="~' && echo 0 || echo 1)"
+
+  # The other branch of the same case: ~/.dvm/bin is already on PATH. The
+  # SHIMS half can still be missing, so this branch is not "nothing to do" —
+  # it is the same two options, shrunk to the half that is still needed.
   onpath_out="$(HOME="${clean_home}" DVM_HOME="${msgdir}/onpath-dvm" \
     PATH="${msgdir}/onpath-dvm/bin:${PATH}" main 2>&1)"
 
-  check "the already-on-PATH branch names --write-path-line" "0" \
-    "$(echo "${onpath_out}" | grep -q 'dvm setup --write-path-line' && echo 0 || echo 1)"
-  check "the already-on-PATH branch hands out no PATH line" "1" \
-    "$(echo "${onpath_out}" | grep -q 'export PATH=' && echo 0 || echo 1)"
+  check "the already-on-PATH branch still offers the one command" "0" \
+    "$(echo "${onpath_out}" \
+      | grep -q "${msgdir}/onpath-dvm/bin/dvm setup --write-path-line" \
+      && echo 0 || echo 1)"
+  check "the already-on-PATH branch offers the shims line" "0" \
+    "$(echo "${onpath_out}" \
+      | grep -q "export PATH=\"${msgdir}/onpath-dvm/shims:" \
+      && echo 0 || echo 1)"
+  # ...and does NOT re-add the directory that is already there.
+  check "the already-on-PATH branch does not re-add bin" "1" \
+    "$(echo "${onpath_out}" | grep -q "shims:${msgdir}/onpath-dvm/bin:" \
+      && echo 0 || echo 1)"
+  check "the already-on-PATH line keeps \$PATH literal" "0" \
+    "$(echo "${onpath_out}" | grep -q 'export PATH="[^"]*:\$PATH"' \
+      && echo 0 || echo 1)"
 
   # The same install into a home that has the user's .zshrc:107 in it.
   shadowed_home="${msgdir}/shadowed-home"
@@ -519,6 +562,23 @@ else
     "$(echo "${shadow_out}" | grep -q 'refuses to write' && echo 0 || echo 1)"
   check "a shadowed install orders the fix first" "0" \
     "$(echo "${shadow_out}" | grep -q '1. comment out the line' && echo 0 || echo 1)"
+
+  # And the command is step 3 of that fix, not the headline. A shadowed shell
+  # is exactly where `--write-path-line` refuses, so leading with the one-step
+  # command would be handing the user something guaranteed to decline.
+  check "a shadowed install names the command as step 3" "0" \
+    "$(echo "${shadow_out}" \
+      | grep -q "${msgdir}/shadow-dvm/bin/dvm setup --write-path-line" \
+      && echo 0 || echo 1)"
+  check "a shadowed install does not lead with the one command" "1" \
+    "$(echo "${shadow_out}" | grep -q 'One command finishes the setup' \
+      && echo 0 || echo 1)"
+  # Nor does it hand out an export line to paste while the shadow is live: the
+  # shadow beats PATH, so the line would change nothing.
+  check "a shadowed install hands out no export line" "1" \
+    "$(echo "${shadow_out}" | grep -q 'export PATH=' && echo 0 || echo 1)"
+  check "a shadowed install says what to clear first" "0" \
+    "$(echo "${shadow_out}" | grep -q 'startup files to clear' && echo 0 || echo 1)"
 
   # The legacy layout is a warning with its own remedy, not part of the failure.
   legacy_dvm="${msgdir}/legacy-dvm"

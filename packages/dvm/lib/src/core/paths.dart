@@ -26,6 +26,15 @@ class DvmPaths {
 
   Directory get versionsDir => _child(home, 'versions');
   Directory get shimsDir => _child(home, 'shims');
+
+  /// Where `install.sh` puts the `dvm` binary itself.
+  ///
+  /// Nothing in the CLI reads this directory — dvm never looks for itself. It
+  /// is here so `setup` can ask one question it cannot otherwise answer: is
+  /// the binary that is running me at the one location an install puts it, and
+  /// therefore a directory worth adding to the user's PATH? See
+  /// `_pathDirectories` in `commands/setup_command.dart`.
+  Directory get binDir => _child(home, 'bin');
   Directory get cacheDir => _child(home, 'cache');
   File get configFile => fileSystem.file(_join(home.path, 'config.json'));
 

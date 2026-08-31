@@ -111,11 +111,16 @@ class SetupCommand extends Command<int> {
     // guaranteed to decline.
     final blocked = scan.shadows.isNotEmpty || scan.unreadable.isNotEmpty;
 
+    // What the PATH line has to cover. Worked out from the binary that was
+    // just baked into the shim, so the line and the shim agree about which
+    // dvm this install is.
+    final directories = _pathDirectories(binary);
+
     var declined = false;
     if (write) {
-      declined = !_writePathLine(shell, blocked: blocked);
+      declined = !_writePathLine(shell, directories, binary, blocked: blocked);
     } else {
-      _printPathInstructions(shell, blocked: blocked);
+      _printPathInstructions(shell, directories, binary, blocked: blocked);
     }
 
     final conflicts = _reportConflicts(scan);
@@ -164,6 +169,66 @@ class SetupCommand extends Command<int> {
     return context.fileSystem.file(resolved);
   }
 
+  /// The directories the PATH line has to cover, in the order they go on PATH.
+  ///
+  /// The shims directory is always in it and always first: it is what makes
+  /// `dart` resolve to the shim, and it has to beat anything else on PATH that
+  /// provides a `dart`.
+  ///
+  /// The directory holding the dvm binary is added only when it is
+  /// [DvmPaths.binDir] — the one place `install.sh` puts it. That single rule
+  /// is the whole guard, and it is deliberately narrower than "wherever dvm
+  /// happens to be running from":
+  ///
+  ///  * A checkout build, a copy in `/tmp`, a colleague's `~/Downloads` — dvm
+  ///    cannot tell any of those from an install, and a startup file is not
+  ///    the place to guess. A wrong entry there is permanent and silent.
+  ///  * A package manager's prefix (`/opt/homebrew/bin`, `/usr/local/bin`) is
+  ///    already on PATH for its own reasons; dvm adding it again would be a
+  ///    duplicate at best and would reorder somebody's PATH at worst.
+  ///
+  /// It subsumes [kIsCompiled] rather than adding to it. Running from source
+  /// with no `--dvm-path` never reaches here — [_resolveDvmBinary] refuses it
+  /// first. Running from source WITH `--dvm-path` naming the installed binary
+  /// names a real install whose directory belongs on PATH no matter what is
+  /// driving it, and gating that on "was this process AOT-compiled" would
+  /// answer a question nobody asked.
+  List<Directory> _pathDirectories(File binary) => [
+        context.paths.shimsDir,
+        if (_isInstalledBinary(binary)) context.paths.binDir,
+      ];
+
+  /// Whether [binary] sits where an install puts it.
+  ///
+  /// Compared through the injected filesystem's path context. [binary] may be
+  /// spelled the way the HOST spells paths while the context is styled
+  /// differently — under test it always is — and the honest answer when the
+  /// two cannot be compared is "no", which costs the user the `bin` half of
+  /// one line rather than a nonsense PATH entry.
+  bool _isInstalledBinary(File binary) {
+    final path = context.fileSystem.path;
+    return path.equals(path.dirname(binary.path), context.paths.binDir.path);
+  }
+
+  /// Says, when the line covers the shims alone, that `dvm` itself is not
+  /// being put on PATH and why.
+  ///
+  /// Silent when [directories] already covers it. This is the half of the
+  /// guard the user can see: a line that quietly did less than they expected
+  /// is how somebody concludes the flag is broken.
+  void _explainOmittedBinDir(List<Directory> directories, File binary) {
+    if (directories.length > 1) return;
+    context.out
+      ..writeln()
+      ..writeln('That line puts the shims on PATH, not `dvm` itself. The dvm '
+          'running now is ${context.display(binary.path)}, which is not '
+          '${context.display(context.paths.binDir.path)}, so dvm cannot tell '
+          'whether that directory is an install worth adding — a guess would '
+          'go into your startup file permanently.')
+      ..writeln('If you want the `dvm` command on PATH from there, add it '
+          'yourself.');
+  }
+
   /// Whether [path] names the Dart VM rather than a dvm binary.
   ///
   /// The last segment after EITHER separator, rather than
@@ -188,11 +253,43 @@ class SetupCommand extends Command<int> {
   ///
   /// [blocked] is the same fact [_writePathLine] refuses on, threaded through
   /// so the offer below cannot point at a flag that would decline.
-  void _printPathInstructions(ShellFacts shell, {required bool blocked}) {
-    final line = shell.pathLine(context.paths.shimsDir);
+  void _printPathInstructions(
+    ShellFacts shell,
+    List<Directory> directories,
+    File binary, {
+    required bool blocked,
+  }) {
+    // Never hand out an instruction that is already in effect. A directory on
+    // PATH right now needs no line, and a user told to add one reasonably
+    // concludes dvm did not look. This is the ENVIRONMENT case;
+    // [PathLineOutcome.alreadyPresent] is the file-contents one, and the two
+    // can be true independently — a line in `.zprofile` puts the directory on
+    // PATH without `.zshrc` mentioning it.
+    final missing = [
+      for (final directory in directories)
+        if (!shell.isOnPath(directory)) directory,
+    ];
+    if (missing.isEmpty) {
+      // PROSE about directories, so it is formatted for reading — the same
+      // call [PathLineOutcome.alreadyPresent] makes just below. The PATH line
+      // itself is built from `directory.path` and never from this.
+      final names =
+          directories.map((directory) => context.display(directory.path));
+      context.out.writeln(
+        directories.length == 1
+            ? '${names.single} is already on your PATH, so there is nothing '
+                'to add.'
+            : '${names.join(' and ')} are already on your PATH, so there is '
+                'nothing to add.',
+      );
+      return;
+    }
+
+    final line = shell.pathLine(missing);
     final rcFile = shell.primaryRcFile;
 
     if (shell.kind == ShellKind.powershell) {
+      final session = missing.map((directory) => directory.path).join(';');
       context.out
         ..writeln('${shell.pathLineAction}:')
         ..writeln()
@@ -207,8 +304,10 @@ class SetupCommand extends Command<int> {
         // ABSOLUTE, deliberately: this is a PATH value the user pastes into
         // a shell, not prose about a file. A relative entry on PATH is
         // resolved against whatever directory each process happens to be in.
-        ..writeln('  \$env:Path = '
-            "'${context.paths.shimsDir.path};' + \$env:Path");
+        // That is why [session] is built from `directory.path` and never from
+        // `context.display`, however many directories it covers.
+        ..writeln("  \$env:Path = '$session;' + \$env:Path");
+      _explainOmittedBinDir(directories, binary);
       return;
     }
 
@@ -219,6 +318,7 @@ class SetupCommand extends Command<int> {
         ..writeln('Add this to your shell startup file:')
         ..writeln()
         ..writeln('  $line');
+      _explainOmittedBinDir(directories, binary);
       return;
     }
 
@@ -247,6 +347,7 @@ class SetupCommand extends Command<int> {
             'that might — see the warnings below.')
         ..writeln('Clear that first and start a new shell, then run: '
             'dvm setup --write-path-line');
+      _explainOmittedBinDir(directories, binary);
       return;
     }
 
@@ -255,11 +356,25 @@ class SetupCommand extends Command<int> {
       ..writeln('It backs ${context.display(rcFile.path)} up before touching '
           'it, and '
           'dvm setup --remove-path-line takes the line back out.');
+    _explainOmittedBinDir(directories, binary);
   }
 
   /// Adds the PATH line to the startup file. Returns whether it got there.
-  bool _writePathLine(ShellFacts shell, {required bool blocked}) {
-    final editor = _editorFor(shell);
+  ///
+  /// Unlike [_printPathInstructions] this does NOT drop a directory that is
+  /// already on `$PATH` in this shell. The user asked for a line that persists,
+  /// and an environment PATH does not: it can come from a shell the user
+  /// exported by hand, or from a startup file that is not the one being
+  /// edited. The file-contents check inside [PathLineEditor.install] is the
+  /// right idempotency guard here, and it is the one that prevents a doubled
+  /// entry.
+  bool _writePathLine(
+    ShellFacts shell,
+    List<Directory> directories,
+    File binary, {
+    required bool blocked,
+  }) {
+    final editor = _editorFor(shell, directories);
     if (editor == null) return false;
 
     if (blocked) {
@@ -286,6 +401,7 @@ class SetupCommand extends Command<int> {
           ..writeln()
           ..writeln('  ${editor.line}');
         _explainNextShell(editor);
+        _explainOmittedBinDir(directories, binary);
       case PathLineOutcome.written:
         context.out
           ..writeln('Backed up ${context.display(editor.rcFile.path)} '
@@ -295,6 +411,7 @@ class SetupCommand extends Command<int> {
           ..writeln()
           ..writeln('  ${editor.line}');
         _explainNextShell(editor);
+        _explainOmittedBinDir(directories, binary);
       case PathLineOutcome.removed:
       case PathLineOutcome.foreign:
       case PathLineOutcome.absent:
@@ -314,7 +431,11 @@ class SetupCommand extends Command<int> {
   /// Takes dvm's PATH line back out. Returns the command's exit code.
   int _removePathLine() {
     final shell = _shell();
-    final editor = _editorFor(shell);
+    // The shims directory alone: removal matches on dvm's markers and on the
+    // shims path, never on [PathLineEditor.line], so there is no binary to
+    // resolve — which is what lets `--remove-path-line` undo an install from a
+    // source checkout.
+    final editor = _editorFor(shell, [context.paths.shimsDir]);
     if (editor == null) return 1;
 
     final result = editor.remove();
@@ -354,14 +475,14 @@ class SetupCommand extends Command<int> {
 
   /// An editor for the shell's startup file, or null once it has said why
   /// there is no file to edit.
-  PathLineEditor? _editorFor(ShellFacts shell) {
+  PathLineEditor? _editorFor(ShellFacts shell, List<Directory> directories) {
     if (shell.kind == ShellKind.powershell) {
       context.err
         ..writeln('PowerShell takes PATH from your environment rather than '
             'from a startup file, so there is no line for dvm to write. Run '
             'this once instead:')
         ..writeln()
-        ..writeln('  ${shell.pathLine(context.paths.shimsDir)}');
+        ..writeln('  ${shell.pathLine(directories)}');
       return null;
     }
 
@@ -374,14 +495,18 @@ class SetupCommand extends Command<int> {
         ..writeln('Neither \$HOME nor \$USERPROFILE is set, so dvm cannot tell '
             'which startup file is yours. Add this line to it yourself:')
         ..writeln()
-        ..writeln('  ${shell.pathLine(context.paths.shimsDir)}');
+        ..writeln('  ${shell.pathLine(directories)}');
       return null;
     }
 
     return PathLineEditor(
       fileSystem: context.fileSystem,
       rcFile: rcFile,
-      line: shell.pathLine(context.paths.shimsDir),
+      line: shell.pathLine(directories),
+      // The shims path is what recognises a line that is already there, and it
+      // stays the shims path even when [line] covers the bin directory too: it
+      // is the entry every spelling of this instruction has carried, including
+      // the ones written by earlier versions of dvm and by hand.
       shimsPath: context.paths.shimsDir.path,
       homePath: shell.home?.path,
       now: _now,

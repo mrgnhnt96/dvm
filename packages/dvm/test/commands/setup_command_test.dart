@@ -564,6 +564,224 @@ void main() {
     });
   });
 
+  // dvm does not have to be on PATH to be RUN — install.sh knows the absolute
+  // path of the binary it just wrote, so it can hand out one command that
+  // finishes the whole setup. That is only honest if the line this writes
+  // covers the dvm binary's own directory as well as the shims; before this,
+  // running that command left a working `dart` and a `dvm` still not on PATH.
+  group('the dvm binary directory', () {
+    /// A dvm binary where an install puts it: `$DVM_HOME/bin/dvm`.
+    String installedDvmBinary() => installDvmBinary('/dvm/bin/dvm');
+
+    test('--write-path-line covers the shims AND the binary directory',
+        () async {
+      final rcFile = harness.fileSystem.file('/home/dev/.zshrc')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('export EDITOR=vim\n');
+
+      expect(
+        await harness.run(
+          ['setup', '--dvm-path', installedDvmBinary(), '--write-path-line'],
+        ),
+        0,
+      );
+
+      expect(
+        rcFile.readAsStringSync(),
+        'export EDITOR=vim\n'
+        '\n'
+        '# >>> dvm >>>\n'
+        'export PATH="/dvm/shims:/dvm/bin:\$PATH"\n'
+        '# <<< dvm <<<\n',
+      );
+      // ONE line, not two: the whole point is a setup with nothing left to
+      // paste afterwards.
+      expect(
+        '# >>> dvm >>>\n'.allMatches(rcFile.readAsStringSync()).length,
+        1,
+      );
+      // And it does not apologise for something it did do.
+      expect(harness.output, isNot(contains('not `dvm` itself')));
+    });
+
+    test(r'the line it writes keeps $PATH literal', () async {
+      harness.fileSystem.file('/home/dev/.zshrc')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('export EDITOR=vim\n');
+
+      await harness.run(
+        ['setup', '--dvm-path', installedDvmBinary(), '--write-path-line'],
+      );
+
+      // Asserted against the BYTES in the file rather than the message: an
+      // expanded PATH here would discard everything the user's own earlier
+      // lines added, on every login, without an error anywhere.
+      final written =
+          harness.fileSystem.file('/home/dev/.zshrc').readAsStringSync();
+      expect(written, contains(r'$PATH'));
+      expect(written, endsWith('# <<< dvm <<<\n'));
+    });
+
+    test('writes the shims alone, and says why, from anywhere else', () async {
+      final rcFile = harness.fileSystem.file('/home/dev/.zshrc')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('export EDITOR=vim\n');
+
+      // A binary in a Homebrew prefix, a checkout build, a copy in /tmp: dvm
+      // cannot tell an install from any of them, so it adds nothing.
+      expect(
+        await harness.run([
+          'setup',
+          '--dvm-path',
+          installDvmBinary('/opt/homebrew/bin/dvm'),
+          '--write-path-line',
+        ]),
+        0,
+      );
+
+      expect(
+        rcFile.readAsStringSync(),
+        'export EDITOR=vim\n'
+        '\n'
+        '# >>> dvm >>>\n'
+        'export PATH="/dvm/shims:\$PATH"\n'
+        '# <<< dvm <<<\n',
+      );
+      expect(rcFile.readAsStringSync(), isNot(contains('/opt/homebrew/bin')));
+      // The guard has to be visible, or the user concludes the flag is broken.
+      expect(harness.output, contains('not `dvm` itself'));
+      expect(harness.output, contains('/opt/homebrew/bin/dvm'));
+      expect(harness.output, contains('/dvm/bin'));
+    });
+
+    test('still refuses to write anything under a shadowed shell', () async {
+      final rcFile = harness.fileSystem.file('/home/dev/.zshrc')
+        ..createSync(recursive: true)
+        ..writeAsStringSync(
+          'export EDITOR=vim\n'
+          'alias dvm=/other/dvm\n',
+        );
+
+      expect(
+        await harness.run(
+          ['setup', '--dvm-path', installedDvmBinary(), '--write-path-line'],
+        ),
+        1,
+      );
+
+      // A shell alias beats PATH outright, so a line naming BOTH directories
+      // would change nothing while looking like it worked.
+      expect(harness.errors, contains('Not writing the PATH line'));
+      expect(
+        rcFile.readAsStringSync(),
+        'export EDITOR=vim\n'
+        'alias dvm=/other/dvm\n',
+      );
+    });
+
+    test('plain setup prints one line naming both directories', () async {
+      harness.fileSystem.file('/home/dev/.zshrc')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('export EDITOR=vim\n');
+
+      expect(
+        await harness.run(['setup', '--dvm-path', installedDvmBinary()]),
+        0,
+      );
+
+      expect(
+        harness.output,
+        contains(r'export PATH="/dvm/shims:/dvm/bin:$PATH"'),
+      );
+    });
+  });
+
+  // Requirement: never hand out an instruction that is already in effect.
+  // `PathLineOutcome.alreadyPresent` answers this for the FILE's contents;
+  // this is the environment's, and they are independent — a line in
+  // `.zprofile` puts a directory on PATH without `.zshrc` mentioning it.
+  group('a directory that is already on PATH', () {
+    test('plain setup says so instead of printing a line to add', () async {
+      harness.environment['PATH'] = '/dvm/shims:/dvm/bin';
+      harness.fileSystem.file('/home/dev/.zshrc')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('export EDITOR=vim\n');
+
+      expect(
+        await harness
+            .run(['setup', '--dvm-path', installDvmBinary('/dvm/bin/dvm')]),
+        0,
+      );
+
+      expect(harness.output, contains('already on your PATH'));
+      expect(harness.output, contains('/dvm/shims'));
+      expect(harness.output, isNot(contains('export PATH=')));
+      expect(harness.output, isNot(contains('Add this line')));
+    });
+
+    test('a trailing separator and a redundant slash are the same entry',
+        () async {
+      // What a real PATH looks like after a few years of hand-editing.
+      harness.environment['PATH'] = '/usr/bin:/dvm/shims/:';
+
+      expect(
+        await harness.run(
+          ['setup', '--dvm-path', installDvmBinary('/usr/local/bin/dvm')],
+        ),
+        0,
+      );
+
+      expect(harness.output, contains('already on your PATH'));
+      expect(harness.output, isNot(contains('export PATH=')));
+    });
+
+    test('names the half that is still missing, and only that half', () async {
+      // The shims are on PATH from some other startup file; the binary's
+      // directory is not. One of the two still needs a line.
+      harness.environment['PATH'] = '/dvm/shims';
+      harness.fileSystem.file('/home/dev/.zshrc')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('export EDITOR=vim\n');
+
+      expect(
+        await harness.run(
+          ['setup', '--dvm-path', installDvmBinary('/dvm/bin/dvm')],
+        ),
+        0,
+      );
+
+      expect(harness.output, contains(r'export PATH="/dvm/bin:$PATH"'));
+      expect(harness.output, isNot(contains('/dvm/shims:/dvm/bin')));
+    });
+
+    test(
+        '--write-path-line still writes it, because a shell PATH does not '
+        'persist', () async {
+      // The user asked for a line in a file. `$PATH` here may be one they
+      // exported by hand in this session and it is gone at logout, so the
+      // environment is not the idempotency guard — the file contents are.
+      harness.environment['PATH'] = '/dvm/shims:/dvm/bin';
+      final rcFile = harness.fileSystem.file('/home/dev/.zshrc')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('export EDITOR=vim\n');
+
+      expect(
+        await harness.run([
+          'setup',
+          '--dvm-path',
+          installDvmBinary('/dvm/bin/dvm'),
+          '--write-path-line',
+        ]),
+        0,
+      );
+
+      expect(
+        rcFile.readAsStringSync(),
+        contains('export PATH="/dvm/shims:/dvm/bin:\$PATH"'),
+      );
+    });
+  });
+
   test('refuses to write and remove the PATH line in one run', () async {
     expect(
       await harness.run([
