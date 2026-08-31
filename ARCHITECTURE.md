@@ -342,6 +342,29 @@ Scan `/releases` for the newest non-draft, non-prerelease entry that actually ca
 the expected asset — a repo that later publishes per-package releases will otherwise
 resolve "latest" to a release with no CLI binary in it.
 
+**Two channels, and the default can never reach the other one.** `install.sh --alpha`
+scans the same page for the newest entry that IS flagged prerelease; every other
+invocation scans for the newest that is not. Neither falls back to the other: a plain
+install must not land on unreleased code, and `--alpha` refusing is better than
+`--alpha` quietly installing the release the user did not ask for.
+
+The alpha side is **one rolling prerelease**, tagged `alpha`, deleted and recreated on
+every push to `main` by `.github/workflows/alpha.yml`. One tag rather than a tag per
+commit, because `install.sh` reads a single `?per_page=100` page and filters inside it:
+an unbounded number of alpha prereleases would eventually push the newest stable release
+off that page and break the DEFAULT installer. `release.yml` stays `workflow_dispatch`-only
+— a rolling alpha is a different artifact from a release and does not make the stable
+path automatic.
+
+An alpha carries its identity in `kBuildTag` (`tool/stamp_build_tag.sh`), which `version()`
+appends as semver build metadata: `0.2.0+alpha.g1a2b3c4`. It is a second constant rather
+than a wider `kVersion` because `tool/stamp_version.sh` refuses a version the pubspec does
+not claim, and that refusal is what stops a published binary lying about its version. The
+alpha stamps `kVersion` from the pubspec — which that check can never refuse — and says
+"alpha, from this commit" separately. Nothing compares `kBuildTag`; `dvm update` and the
+version notice both read `kVersion`, so no version arithmetic has to learn about build
+metadata.
+
 Replacing the running binary works on POSIX because `rename` over a running executable
 keeps the inode alive, so temp-file-then-rename is safe. Windows cannot replace a
 running `.exe`; there the current binary must be renamed aside first, then the new one
