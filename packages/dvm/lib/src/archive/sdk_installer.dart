@@ -8,6 +8,7 @@ import '../core/installer.dart';
 import '../core/paths.dart';
 import '../core/platform.dart';
 import '../core/releases.dart';
+import '../core/style.dart';
 import '../core/verbose.dart';
 import 'dart_archive_client.dart';
 import 'dart_archive_exception.dart';
@@ -29,6 +30,7 @@ class SdkInstaller implements Installer {
     required HostPlatform Function() hostPlatform,
     required StringSink progress,
     bool progressIsTerminal = false,
+    Styles? styles,
     http.Client? httpClient,
     SdkDownloader? downloader,
     SdkExtractor? extractor,
@@ -38,6 +40,7 @@ class SdkInstaller implements Installer {
         _verbose = verbose ?? VerboseLog.disabled,
         _progress = progress,
         _progressIsTerminal = progressIsTerminal,
+        _styles = styles ?? Styles(),
         _injectedDownloader = downloader,
         _httpClient = httpClient,
         _extractor = extractor ?? const ZipSdkExtractor(),
@@ -50,6 +53,7 @@ class SdkInstaller implements Installer {
   final HostPlatform Function() _hostPlatform;
   final StringSink _progress;
   final bool _progressIsTerminal;
+  final Styles _styles;
   final SdkExtractor _extractor;
   final ModeApplier _modeApplier;
   final SdkDownloader? _injectedDownloader;
@@ -62,6 +66,7 @@ class SdkInstaller implements Installer {
         fileSystem: fileSystem,
         progress: _progress,
         progressIsTerminal: _progressIsTerminal,
+        styles: _styles,
         httpClient: _httpClient,
         verbose: _verbose,
       );
@@ -114,8 +119,10 @@ class SdkInstaller implements Installer {
       final zip = fileSystem.file(
         fileSystem.path.join(scratch.path, artifact.fileName),
       );
-      _progress.writeln('Downloading Dart $version (${platform.os}-'
-          '${platform.arch}, ${resolvedChannel.token})');
+      _progress.writeln(
+        _styles.heading('Downloading Dart $version (${platform.os}-'
+            '${platform.arch}, ${resolvedChannel.token})'),
+      );
       await _downloader.download(artifact, zip);
 
       final unpacked = fileSystem.directory(
@@ -131,7 +138,7 @@ class SdkInstaller implements Installer {
       // Telling the user the work is done and then visibly not being done is
       // worse than showing no progress at all, so this reports the same way
       // the download does, through the same bar.
-      _progress.writeln('Unpacking Dart $version');
+      _progress.writeln(_styles.heading('Unpacking Dart $version'));
       ProgressBar? bar;
       var unpackedBytes = 0;
       final modes = await _runUnpackingBar(
@@ -143,6 +150,7 @@ class SdkInstaller implements Installer {
             // the decoder knows how many bytes the archive holds.
             bar ??= ProgressBar(
               sink: _progress,
+              styles: _styles,
               label: 'dart-sdk',
               total: total,
               isTerminal: _progressIsTerminal,

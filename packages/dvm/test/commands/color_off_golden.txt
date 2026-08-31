@@ -1,0 +1,80 @@
+=== dvm doctor (a machine with three problems) -> exit 1
+--- stdout
+dvm doctor
+  FAIL  PATH: /dvm/shims is on PATH but an entry ahead of it provides a dart, so the shim is never reached.
+          PATH order (entries that provide a dart):
+            2. /dvm/shims  <- dvm shims
+            1. /usr/bin
+          -> Put the shims first: export PATH="/dvm/shims:$PATH"
+  FAIL  shims: /dvm/shims/dart does not exist.
+          -> Run: dvm setup
+  FAIL  shell: your shell defines its own `dvm`, which is resolved before PATH is searched — so this dvm never runs.
+          /home/dev/.zshrc:1: dvm() { echo the old one; }   (a shell function named dvm)
+          -> Remove or comment out the line(s) above, then start a new shell.
+  warn  shell: an older dvm (cbracken/dvm) shares /dvm.
+          /dvm/darts
+          -> Import its SDKs with: dvm migrate
+  ok    config: no /dvm/config.json yet, which is the normal state before a global default is set.
+  ok    project: no .dvmrc at or above /project, so the global default applies here.
+
+3 problems, 1 warning.
+--- stderr
+
+=== dvm doctor (a healthy machine) -> exit 1
+--- stdout
+dvm doctor
+  ok    PATH: /dvm/shims is on PATH ahead of every other dart.
+  FAIL  shims: /dvm/shims/dart is not recognisable as a dvm shim.
+          -> Overwrite it with: dvm setup
+  ok    shell: no shell function or alias named `dvm` in your startup files.
+  ok    config: no /dvm/config.json yet, which is the normal state before a global default is set.
+  ok    project: .dvmrc pins Dart 3.9.0, which is installed.
+
+1 problem, 0 warnings.
+--- stderr
+
+=== dvm setup (prints the PATH line, with a legacy install in the way) -> exit 1
+--- stdout
+Wrote /dvm/shims/dart
+  -> /dvm/bin/dvm exec dart
+
+Add this line to /home/dev/.zshrc (/bin/zsh):
+
+  export PATH="/dvm/bin:$PATH"
+
+It has to go ahead of anything else that puts a dart on PATH, and it only takes effect in shells started after you save the file.
+
+dvm could add that line for you, but not yet: something in your startup files would beat it, or dvm could not read a file that might — see the warnings below.
+Clear that first and start a new shell, then run: dvm setup --write-path-line
+
+Then check it with: dvm doctor
+--- stderr
+
+WARNING: your shell defines its own `dvm`, which will win over the binary you just set up — a shell function or alias is resolved before PATH is ever searched.
+  /home/dev/.zshrc:1: dvm() { echo the old one; }
+Remove or comment out the line(s) above, then start a new shell.
+
+WARNING: an older dvm (cbracken/dvm) shares /dvm:
+  /dvm/darts
+Import its SDKs with: dvm migrate
+
+=== dvm setup (nothing to add) -> exit 0
+--- stdout
+Wrote /dvm/shims/dart
+  -> /dvm/bin/dvm exec dart
+
+/dvm/shims and /dvm/bin are already on your PATH, so there is nothing to add.
+
+Then check it with: dvm doctor
+--- stderr
+
+=== dvm install 3.13.2 (a fresh install) -> exit 0
+--- stdout
+Installed Dart 3.13.2 to /dvm/versions/3.13.2
+--- stderr
+
+=== dvm install 3.9.0 (already installed) -> exit 0
+--- stdout
+Dart 3.9.0 is already installed at /dvm/versions/3.9.0
+--- stderr
+

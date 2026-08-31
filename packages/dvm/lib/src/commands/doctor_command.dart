@@ -7,6 +7,7 @@ import '../core/exceptions.dart';
 import '../core/path_line.dart';
 import '../core/shell.dart';
 import '../core/shims.dart';
+import '../core/style.dart';
 import 'version_ref.dart';
 
 /// How bad a finding is.
@@ -23,6 +24,61 @@ enum DoctorSeverity {
 
   /// A fixed-width marker, so the findings line up in a terminal.
   final String label;
+
+  /// [label] in this severity's colour — the token a reader's eye lands on
+  /// when skimming a screen of findings, and the only part of the line that is
+  /// coloured. Colouring the summary too would make the whole screen loud,
+  /// which is the opposite of skimmable.
+  String render(Styles styles) => switch (this) {
+        DoctorSeverity.ok => styles.ok(label),
+        DoctorSeverity.warn => styles.warn(label),
+        DoctorSeverity.fail => styles.fail(label),
+      };
+}
+
+/// What to do about a finding, split so the part the user has to TYPE can be
+/// highlighted apart from the prose leading into it.
+///
+/// One opaque string would force a heuristic — "colour whatever follows the
+/// last colon" — and a heuristic that is wrong once puts an escape sequence
+/// into the middle of a sentence. Splitting it where the remedy is WRITTEN
+/// costs one argument and cannot be wrong.
+class DoctorRemedy {
+  /// Prose leading into a command, with an optional note after it.
+  const DoctorRemedy(this.lead, String this.command, {this.trail = ''});
+
+  /// A remedy with nothing to type: "Remove the line(s) above, then start a
+  /// new shell."
+  const DoctorRemedy.prose(this.lead)
+      : command = null,
+        trail = '';
+
+  /// A bare command — the `export PATH=…` line, which is the whole answer.
+  const DoctorRemedy.run(String this.command)
+      : lead = '',
+        trail = '';
+
+  /// What comes before [command]. Dimmed: it explains, it is not the answer.
+  final String lead;
+
+  /// The thing to type. Null when the remedy is prose all the way through.
+  final String? command;
+
+  /// A parenthetical after the command — `  (or run: dvm setup)`. Dimmed with
+  /// [lead], because a remedy with two highlighted commands has none.
+  final String trail;
+
+  /// The remedy as one line, behind [indent].
+  ///
+  /// [indent] is dimmed together with [lead] rather than separately: they are
+  /// adjacent and the same role, and two escape pairs where one will do is
+  /// noise to anything reading the raw bytes. With colour off this is exactly
+  /// `indent + lead + command + trail`, byte for byte the string this type
+  /// replaced.
+  String render(Styles styles, {String indent = ''}) =>
+      '${styles.detail('$indent$lead')}'
+      '${command == null ? '' : styles.command(command!)}'
+      '${styles.detail(trail)}';
 }
 
 /// One thing `doctor` looked at, and what it found.
@@ -47,7 +103,7 @@ class DoctorFinding {
   final List<String> details;
 
   /// What to run or edit. Present on everything that is not [DoctorSeverity.ok].
-  final String? remedy;
+  final DoctorRemedy? remedy;
 }
 
 /// `dvm doctor` — Check PATH order, shim health, symlinks and config validity.
@@ -84,16 +140,21 @@ class DoctorCommand extends Command<int> {
       ..._checkProject(),
     ];
 
-    context.out.writeln('dvm doctor');
+    final styles = context.styles;
+    context.out.writeln(styles.heading('dvm doctor'));
     for (final finding in findings) {
       context.out.writeln(
-        '  ${finding.severity.label}  ${finding.area}: ${finding.summary}',
+        '  ${finding.severity.render(styles)}  '
+        '${finding.area}: ${finding.summary}',
       );
       for (final detail in finding.details) {
-        context.out.writeln('          $detail');
+        // Dimmed as a block: PATH orders, rc-file listings and "every `dart`
+        // fails until this is fixed" are all context for the summary above,
+        // and the summary is what has to be findable.
+        context.out.writeln(styles.detail('          $detail'));
       }
       if (finding.remedy case final remedy?) {
-        context.out.writeln('          -> $remedy');
+        context.out.writeln(remedy.render(styles, indent: '          -> '));
       }
     }
 
@@ -106,11 +167,15 @@ class DoctorCommand extends Command<int> {
 
     context.out.writeln();
     if (failures == 0 && warnings == 0) {
-      context.out.writeln('Everything checks out.');
+      context.out.writeln(styles.ok('Everything checks out.'));
       return 0;
     }
+    // The verdict, coloured by the worst thing in it: this is the one line
+    // somebody who ran `dvm doctor` and looked away is coming back to.
+    final tally = '${_count(failures, 'problem')}, '
+        '${_count(warnings, 'warning')}.';
     context.out.writeln(
-      '${_count(failures, 'problem')}, ${_count(warnings, 'warning')}.',
+      failures == 0 ? styles.warn(tally) : styles.fail(tally),
     );
     return failures == 0 ? 0 : 1;
   }
@@ -136,7 +201,7 @@ class DoctorCommand extends Command<int> {
           area: 'PATH',
           summary: 'PATH is not set in this environment, so nothing can find '
               'the shims.',
-          remedy: line,
+          remedy: DoctorRemedy.run(line),
         ),
       ];
     }
@@ -174,7 +239,7 @@ class DoctorCommand extends Command<int> {
           summary: '${shims.path} is not on PATH, so '
               '`dart` does not go through dvm.',
           details: order(),
-          remedy: '${shell.pathLineAction}: $line',
+          remedy: DoctorRemedy('${shell.pathLineAction}: ', line),
         ),
       ];
     }
@@ -189,7 +254,7 @@ class DoctorCommand extends Command<int> {
               '${ahead.length == 1 ? 'an entry ahead of it provides' : '${ahead.length} entries ahead of it provide'} '
               'a dart, so the shim is never reached.',
           details: order(),
-          remedy: 'Put the shims first: $line',
+          remedy: DoctorRemedy('Put the shims first: ', line),
         ),
       ];
     }
@@ -219,7 +284,7 @@ class DoctorCommand extends Command<int> {
           severity: DoctorSeverity.fail,
           area: 'shims',
           summary: '${shim.path} does not exist.',
-          remedy: 'Run: dvm setup',
+          remedy: const DoctorRemedy('Run: ', 'dvm setup'),
         ),
       ];
     }
@@ -236,7 +301,10 @@ class DoctorCommand extends Command<int> {
           area: 'shims',
           summary: '${shim.path} exists but could not be read '
               '(${error.message}), so dvm cannot say what it runs.',
-          remedy: 'Check its permissions, then run: dvm setup',
+          remedy: const DoctorRemedy(
+            'Check its permissions, then run: ',
+            'dvm setup',
+          ),
         ),
       ];
     }
@@ -248,7 +316,7 @@ class DoctorCommand extends Command<int> {
           area: 'shims',
           summary: '${shim.path} is not recognisable as a '
               'dvm shim.',
-          remedy: 'Overwrite it with: dvm setup',
+          remedy: const DoctorRemedy('Overwrite it with: ', 'dvm setup'),
         ),
       ];
     }
@@ -264,7 +332,10 @@ class DoctorCommand extends Command<int> {
           details: const [
             'Every `dart` on this machine fails until this is fixed.',
           ],
-          remedy: 'Re-point it at the dvm you have now: dvm setup',
+          remedy: const DoctorRemedy(
+            'Re-point it at the dvm you have now: ',
+            'dvm setup',
+          ),
         ),
       );
     }
@@ -277,8 +348,13 @@ class DoctorCommand extends Command<int> {
           severity: DoctorSeverity.fail,
           area: 'shims',
           summary: '${shim.path} is not executable.',
-          remedy: 'chmod 755 ${shim.path}  '
-              '(or run: dvm setup)',
+          // Two things to type, so only the first is highlighted: a line
+          // with two commands in it has none.
+          remedy: DoctorRemedy(
+            '',
+            'chmod 755 ${shim.path}',
+            trail: '  (or run: dvm setup)',
+          ),
         ),
       );
     }
@@ -329,8 +405,10 @@ class DoctorCommand extends Command<int> {
             for (final shadow in scan.shadows)
               '${shadow.describe()}   (${shadow.kind.description})',
           ],
-          remedy: 'Remove or comment out the line(s) above, then start a new '
-              'shell.',
+          remedy: const DoctorRemedy.prose(
+            'Remove or comment out the line(s) above, then start a new '
+            'shell.',
+          ),
         ),
       );
     }
@@ -342,7 +420,9 @@ class DoctorCommand extends Command<int> {
           area: 'shell',
           summary: 'could not read ${entry.key} (${entry.value}), so dvm '
               'cannot say whether it defines a conflicting `dvm`.',
-          remedy: 'Check the file by hand for a `dvm` function or alias.',
+          remedy: const DoctorRemedy.prose(
+            'Check the file by hand for a `dvm` function or alias.',
+          ),
         ),
       );
     }
@@ -360,7 +440,7 @@ class DoctorCommand extends Command<int> {
                   '(sourcing this is what defines the function)',
             for (final directory in legacy.directories) directory.path,
           ],
-          remedy: 'Import its SDKs with: dvm migrate',
+          remedy: const DoctorRemedy('Import its SDKs with: ', 'dvm migrate'),
         ),
       );
     }
@@ -409,11 +489,16 @@ class DoctorCommand extends Command<int> {
                 'not the one above.',
         ],
         remedy: others.isEmpty
-            ? 'Start a new shell. If it is still missing, the file above is '
-                'not one your shell reads — move the line into the one it '
-                'does.'
-            : 'Move the line into the startup file your shell actually reads, '
-                'or re-run: SHELL=<your shell> dvm setup --write-path-line',
+            ? const DoctorRemedy.prose(
+                'Start a new shell. If it is still missing, the file above '
+                'is not one your shell reads — move the line into the one '
+                'it does.',
+              )
+            : const DoctorRemedy(
+                'Move the line into the startup file your shell actually '
+                    'reads, or re-run: ',
+                'SHELL=<your shell> dvm setup --write-path-line',
+              ),
       ),
     ];
   }
@@ -442,8 +527,10 @@ class DoctorCommand extends Command<int> {
           severity: DoctorSeverity.fail,
           area: 'config',
           summary: error.message,
-          remedy: 'Fix ${file.path}, or delete it to start '
-              'over.',
+          remedy: DoctorRemedy.prose(
+            'Fix ${file.path}, or delete it to start '
+            'over.',
+          ),
         ),
       ];
     }
@@ -471,7 +558,7 @@ class DoctorCommand extends Command<int> {
           area: 'config',
           summary: 'the global default "$global" cannot be resolved: '
               '${error.message}',
-          remedy: 'Set it again: dvm global <version>',
+          remedy: const DoctorRemedy('Set it again: ', 'dvm global <version>'),
         ),
       ];
     }
@@ -489,7 +576,11 @@ class DoctorCommand extends Command<int> {
                 '${context.paths.versionDir(ref.version).path}',
             'Every directory without a .dvmrc fails until this is fixed.',
           ],
-          remedy: 'dvm install ${ref.version}  (or: dvm global <version>)',
+          remedy: DoctorRemedy(
+            '',
+            'dvm install ${ref.version}',
+            trail: '  (or: dvm global <version>)',
+          ),
         ),
       ];
     }
@@ -532,7 +623,10 @@ class DoctorCommand extends Command<int> {
           severity: DoctorSeverity.fail,
           area: 'project',
           summary: error.message,
-          remedy: 'Rewrite it with: dvm use <version>',
+          remedy: const DoctorRemedy(
+            'Rewrite it with: ',
+            'dvm use <version>',
+          ),
         ),
       ];
     }
@@ -548,7 +642,10 @@ class DoctorCommand extends Command<int> {
           summary: '${context.display(rcFile.path)} pins "$pin", which '
               'cannot be resolved: '
               '${error.message}',
-          remedy: 'Pin a version that exists: dvm use <version>',
+          remedy: const DoctorRemedy(
+            'Pin a version that exists: ',
+            'dvm use <version>',
+          ),
         ),
       ];
     }
@@ -571,7 +668,7 @@ class DoctorCommand extends Command<int> {
           summary: '${context.display(rcFile.path)} pins Dart ${ref.version}'
               '${ref.isDirect ? '' : ' (${ref.trail})'}, which is not '
               'installed.',
-          remedy: 'dvm install ${ref.version}',
+          remedy: DoctorRemedy.run('dvm install ${ref.version}'),
         ),
       );
     }
@@ -600,7 +697,10 @@ class DoctorCommand extends Command<int> {
           summary: '${context.display(link.path)} exists but is not a '
               'symlink, so dvm will not '
               'replace it.',
-          remedy: 'Delete it, then run: dvm use <version>',
+          remedy: const DoctorRemedy(
+            'Delete it, then run: ',
+            'dvm use <version>',
+          ),
         ),
       ];
     }
@@ -619,8 +719,11 @@ class DoctorCommand extends Command<int> {
             'An IDE following it will report a broken or missing SDK.',
           ],
           remedy: version == null
-              ? 'Pin a version here: dvm use <version>'
-              : 'Re-point it: dvm use $version',
+              ? const DoctorRemedy(
+                  'Pin a version here: ',
+                  'dvm use <version>',
+                )
+              : DoctorRemedy('Re-point it: ', 'dvm use $version'),
         ),
       ];
     }
@@ -636,7 +739,7 @@ class DoctorCommand extends Command<int> {
                 '$target, but this project pins '
                 'Dart $version.',
             details: ['Expected it to point at $expected'],
-            remedy: 'Re-point it: dvm use $version',
+            remedy: DoctorRemedy('Re-point it: ', 'dvm use $version'),
           ),
         ];
       }
