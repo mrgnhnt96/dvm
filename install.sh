@@ -341,6 +341,100 @@ warn_about_shadows() {
   return 0
 }
 
+# What the user does now that the binary is on disk. "$1" is the shadowing
+# lines already found by scan_startup_files, "$2" the dvm home, "$3" the
+# directory the binary was installed into.
+#
+# A FUNCTION, and not a block inside main, because main is not the only caller.
+# tool/install_from_main.sh installs a build of the checkout the same way and
+# has to close with the same words — it used to carry a hand-copied version of
+# them, and the copy went stale the day this message was rewritten: it still
+# described three steps that no longer existed, so a correct install looked
+# broken to the person following it. tool/test_install_sh.sh now fails if this
+# prose turns up anywhere else in the repo, because a comment saying "this is a
+# copy" is not a guard.
+#
+# TWO DIRECTORIES, ONE STEP. The bin directory is what makes the `dvm` command
+# resolvable; `<dvm home>/shims` is what makes `dart` and `flutter` resolve to
+# the shims. They are different directories and both have to be on PATH.
+#
+# The thing that collapses this from three steps to one: DVM DOES NOT HAVE TO
+# BE ON PATH TO BE RUN. The caller has just written the binary and knows its
+# absolute path, so it can hand out a command that works in the shell the user
+# is standing in right now — and that one command does the whole job, because
+# `dvm setup` writes the shim and `--write-path-line` writes a single PATH line
+# covering BOTH directories (see _pathDirectories in
+# packages/dvm/lib/src/commands/setup_command.dart).
+#
+# The absolute path is used even when the bin directory is already on PATH. It
+# costs nothing to paste and it names THIS dvm, not whichever one an existing
+# PATH entry would have found.
+#
+# A shadow is handled first and separately: `--write-path-line` refuses to
+# write while a `dvm` function or alias is defined, so offering it as the
+# immediate next step would send the user to a command guaranteed to decline.
+# The caller's warn_about_shadows orders that fix and names the command as its
+# step 3, which is why this prints a pointer and stops when "$1" is non-empty.
+print_next_steps() {
+  steps_shadow_lines="$1"
+  steps_dvm_home="$2"
+  steps_bin_dir="$3"
+
+  info ""
+
+  if [ -n "${steps_shadow_lines}" ]; then
+    info "Before dvm can finish setting itself up, there is something in your"
+    info "shell startup files to clear — see below."
+  else
+    case ":${PATH}:" in
+      *":${steps_bin_dir}:"*)
+        # The bin directory is already on PATH, so only the shims half can
+        # still be missing. Both options stay, and both shrink to that half.
+        info "One command finishes the setup:"
+        info ""
+        info "  ${steps_bin_dir}/dvm setup --write-path-line"
+        info ""
+        info "That installs the dart shim and adds ${steps_dvm_home}/shims to your"
+        info "startup file, backing it up first. Then start a new shell and"
+        info "you are done. (${steps_bin_dir} is already on your PATH.)"
+        info ""
+        info "Or, if you would rather dvm did not edit your files, add this"
+        info "line yourself and then run  dvm setup :"
+        info ""
+        info "  export PATH=\"${steps_dvm_home}/shims:\$PATH\""
+        ;;
+      *)
+        info "One command finishes the setup — dvm does not have to be on PATH"
+        info "to be run, so this absolute path works in this shell right now:"
+        info ""
+        info "  ${steps_bin_dir}/dvm setup --write-path-line"
+        info ""
+        info "That installs the dart shim and adds ONE line to your startup"
+        info "file covering both of the directories dvm needs on PATH:"
+        info ""
+        info "  ${steps_dvm_home}/shims   so \`dart\` and \`flutter\` run the shim"
+        info "  ${steps_bin_dir}   so \`dvm\` itself resolves"
+        info ""
+        info "It backs the file up first. Then start a new shell and you are"
+        info "done — one command, one new shell."
+        info ""
+        info "Or, if you would rather dvm did not edit your files, add this one"
+        info "line yourself:"
+        info ""
+        info "  export PATH=\"${steps_dvm_home}/shims:${steps_bin_dir}:\$PATH\""
+        info ""
+        info "then start a new shell and run  dvm setup ."
+        info ""
+        info "Naming ${steps_dvm_home}/shims before it exists is deliberate, not a"
+        info "mistake to fix: a shell skips PATH entries that do not resolve,"
+        info "so the entry goes live the moment \`dvm setup\` creates it."
+        ;;
+    esac
+  fi
+
+  return 0
+}
+
 main() {
   target="$(detect_target)"
   asset="dvm-${target}.zip"
@@ -388,80 +482,13 @@ asset; try again, and if it keeps happening do not install it."
 
   info ""
   info "dvm ${tag} is installed at ${bin_dir}/dvm"
-  info ""
 
-  # TWO DIRECTORIES, ONE STEP. `${bin_dir}` is what makes the `dvm` command
-  # resolvable; `${dvm_home}/shims` is what makes `dart` and `flutter` resolve
-  # to the shims. They are different directories and both have to be on PATH.
-  #
-  # The thing that collapses this from three steps to one: DVM DOES NOT HAVE TO
-  # BE ON PATH TO BE RUN. This script just wrote the binary and knows its
-  # absolute path, so it can hand out a command that works in the shell the
-  # user is standing in right now — and that one command does the whole job,
-  # because `dvm setup` writes the shim and `--write-path-line` writes a single
-  # PATH line covering BOTH directories (see _pathDirectories in
-  # packages/dvm/lib/src/commands/setup_command.dart).
-  #
-  # The absolute path is used even when ${bin_dir} is already on PATH. It costs
-  # nothing to paste and it names THIS dvm, not whichever one an existing PATH
-  # entry would have found.
-  #
-  # A shadow is handled first and separately: `--write-path-line` refuses to
-  # write while a `dvm` function or alias is defined, so offering it as the
-  # immediate next step would send the user to a command guaranteed to decline.
-  # warn_about_shadows below orders that fix and names the command as its
-  # step 3.
+  # Scanned BEFORE anything is printed, because the answer changes the message:
+  # a shadowed shell gets a pointer at the fix instead of the one-step command,
+  # and scanning twice would invite the two answers to drift.
   shadow_lines="$(scan_startup_files "${HOME:-}")"
 
-  if [ -n "${shadow_lines}" ]; then
-    info "Before dvm can finish setting itself up, there is something in your"
-    info "shell startup files to clear — see below."
-  else
-    case ":${PATH}:" in
-      *":${bin_dir}:"*)
-        # ${bin_dir} is already on PATH, so only the shims half can still be
-        # missing. Both options stay, and both shrink to that half.
-        info "One command finishes the setup:"
-        info ""
-        info "  ${bin_dir}/dvm setup --write-path-line"
-        info ""
-        info "That installs the dart shim and adds ${dvm_home}/shims to your"
-        info "startup file, backing it up first. Then start a new shell and"
-        info "you are done. (${bin_dir} is already on your PATH.)"
-        info ""
-        info "Or, if you would rather dvm did not edit your files, add this"
-        info "line yourself and then run  dvm setup :"
-        info ""
-        info "  export PATH=\"${dvm_home}/shims:\$PATH\""
-        ;;
-      *)
-        info "One command finishes the setup — dvm does not have to be on PATH"
-        info "to be run, so this absolute path works in this shell right now:"
-        info ""
-        info "  ${bin_dir}/dvm setup --write-path-line"
-        info ""
-        info "That installs the dart shim and adds ONE line to your startup"
-        info "file covering both of the directories dvm needs on PATH:"
-        info ""
-        info "  ${dvm_home}/shims   so \`dart\` and \`flutter\` run the shim"
-        info "  ${bin_dir}   so \`dvm\` itself resolves"
-        info ""
-        info "It backs the file up first. Then start a new shell and you are"
-        info "done — one command, one new shell."
-        info ""
-        info "Or, if you would rather dvm did not edit your files, add this one"
-        info "line yourself:"
-        info ""
-        info "  export PATH=\"${dvm_home}/shims:${bin_dir}:\$PATH\""
-        info ""
-        info "then start a new shell and run  dvm setup ."
-        info ""
-        info "Naming ${dvm_home}/shims before it exists is deliberate, not a"
-        info "mistake to fix: a shell skips PATH entries that do not resolve,"
-        info "so the entry goes live the moment \`dvm setup\` creates it."
-        ;;
-    esac
-  fi
+  print_next_steps "${shadow_lines}" "${dvm_home}" "${bin_dir}"
 
   # Last, so it is the last thing on screen: the reason the step above may not
   # be enough, or may not be the step at all. This can only warn — it never

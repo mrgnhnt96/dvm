@@ -51,6 +51,18 @@
         ]
       },
       "name": "pure-logic"
+    },
+    {
+      "lane": "headless",
+      "match": {
+        "title": [
+          "install\\.sh",
+          "install-from-main|install_from_main",
+          "installer",
+          "shell script"
+        ]
+      },
+      "name": "installer-shell"
     }
   ],
   "lock_root": null,

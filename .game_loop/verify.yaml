@@ -119,6 +119,29 @@
   - "sh -n install.sh"
   - "sh tool/test_install_sh.sh"
 
+# The developer script that installs a build of the local checkout by calling
+# install.sh's own functions. It was UNTRACKED until this leaf, and that is
+# exactly how it broke unseen: it called warn_about_shadows with two arguments
+# after that function grew a third, so under `set -u` it died on
+# "$3: unbound variable" — after installing the binary and before printing one
+# word of guidance. No rule can match a file nobody tracks, so it never appeared
+# as unchecked either; it was absent from the report rather than red in it.
+#
+# `sh -n` is listed first and is NOT the check that matters: a wrong-arity call
+# parses perfectly. What matters is that tool/test_install_sh.sh now RUNS this
+# script end to end against a throwaway DVM_HOME with a stub `dart` on PATH, and
+# asserts it reaches its LAST LINE — because its `trap ... EXIT` turns a fatal
+# `set -u` abort into exit 0 under bash, so exit status alone reports that crash
+# as a success.
+#
+# NO shellcheck line here, unlike the install.sh rule above: shellcheck is not
+# installed on the machine this rule was written on, so listing it would put a
+# command into this gate that has never been observed to run. Worth adding by
+# someone who can watch it pass.
+"tool/install_from_main.sh":
+  - "sh -n tool/install_from_main.sh"
+  - "sh tool/test_install_sh.sh"
+
 # The release scripts. `bash -n` is what test.yml runs on them ("Check the
 # release scripts parse") and it is all that can run here: executing them for
 # real packages and uploads release artifacts.
