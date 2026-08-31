@@ -15,6 +15,7 @@ import 'package:jaspr_search/jaspr_search.dart';
 
 import 'components/cards.dart';
 import 'components/docs_sidebar.dart';
+import 'components/terminal.dart';
 import 'main.server.options.dart';
 import 'src/navigation.dart';
 
@@ -43,6 +44,7 @@ void main() {
         const CardGrid(),
         const Card(),
         const SectionCards(),
+        const Terminal(),
       ],
       layouts: [
         DvmDocsLayout(

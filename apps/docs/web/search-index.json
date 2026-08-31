@@ -7,27 +7,32 @@
       "d": "What dvm is, and how the pieces fit together.",
       "s": [
         {
-          "b": "dvm keeps every Dart SDK you use in one central cache, lets a project pin the version it wants in a committed .dvmrc, and makes the plain dart command resolve to that version — the same way fvm does for Flutter, and nvm does for Node. One curl command, on a machine that has never had Dart on it. Install an SDK, pin a project, and watch dart follow the pin. The five rules that decide which SDK you get. Read this one first when something is wrong."
+          "b": "Install it with one command, on a machine that has never had Dart on it: curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh sh"
         },
         {
-          "h": "The whole thing in five commands",
-          "a": "the-whole-thing-in-five-commands",
-          "b": "curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh sh dvm setup write the dart shim, print the PATH line to add dvm install 3.13.2 download into ~/.dvm/versions dvm use 3.13.2 pin this project; writes .dvmrc dart --version 3.13.2, here and nowhere else dvm use writes a .dvmrc you commit. Anyone who clones the repo and has dvm installed gets the same SDK, and dart in that directory means that SDK — without them typing a dvm command at all."
+          "h": "From nothing to a pinned SDK",
+          "a": "from-nothing-to-a-pinned-sdk",
+          "b": "dvm arrives as a compiled binary, so it is ready before any SDK exists. dvm setup then writes the dart shim and hands you the one line that puts it on PATH. $ curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh sh Looking up the newest dvm release... Downloading dvm-macos-arm64.zip (v0.2.0)... dvm v0.2.0 is installed at /Users/you/.dvm/bin/dvm … $ dvm setup Wrote /Users/you/.dvm/shims/dart -> /Users/you/.dvm/bin/dvm exec dart Add this line to /Users/you/.zshrc (/bin/zsh): export PATH=\"/Users/you/.dvm/shims:$PATH\" It has to go ahead of anything else that puts a dart on PATH, and it only takes effect in shells started after you save the file. Then check it with: dvm doctor From there, dvm install puts an SDK in the cache and dvm use pins this project to it. $ dvm install 3.13.2 Downloading Dart 3.13.2 (macos-arm64, stable) dartsdk-macos-arm64-release.zip 0% (0.0 / 215.4 MB) … dartsdk-macos-arm64-release.zip 100% (215.4 / 215.4 MB) Installed Dart 3.13.2 to /Users/you/.dvm/versions/3.13.2 $ dvm use 3.13.2 Pinned Dart 3.13.2 for /Users/you/work/api. /Users/you/work/api/.dvmrc -> commit this /Users/you/work/api/.dvm/dart_sdk -> /Users/you/.dvm/versions/3.13.2 (for "
         },
         {
-          "h": "What it is made of",
-          "a": "what-it-is-made-of",
-          "b": "One cache. Every SDK lives in ~/.dvm/versions/ , extracted once and shared by every project that pins it. Two projects on the same version cost one download. A committed pin. .dvmrc is a two-line JSON file at the root of a project. It is the only dvm file you commit. A shim on PATH. ~/.dvm/shims/dart is a two-line shell script that hands off to dvm. It is what makes plain dart — and every tool that spawns dart behind your back — respect the pin. A resolution order you can inspect. Five rules, first match wins, and dvm which tells you which one answered. See Resolution Order."
+          "h": "The same command, two answers",
+          "a": "the-same-command-two-answers",
+          "b": "Here is the whole idea in one screen. Same shell, same dart — the directory is the only thing that changed. $ dart --version Dart SDK version: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on \"macos_arm64\" $ dart --version Dart SDK version: 3.5.4 (stable) (Wed Oct 16 16:18:51 2024 +0000) on \"macos_arm64\" \"Which Dart am I running?\" is now a property of the directory you are standing in, and dvm which shows the whole answer: the SDK, the version, and which of the five rules chose it. $ dvm which /Users/you/.dvm/versions/3.5.4/bin/dart Dart 3.5.4 Chosen by rule 2 of 5: pinned by /Users/you/work/legacy/.dvmrc. SDK: /Users/you/.dvm/versions/3.5.4 Every tool that spawns dart behind your back goes through the same shim, so build scripts and test runners land on the SDK the project asked for. Editors that want an SDK directory instead get one: dvm use keeps .dvm/dart_sdk pointed at the same version."
         },
         {
-          "h": "One machine, several projects",
-          "a": "one-machine-several-projects",
-          "b": "dvm is for a machine with more than one project on it. One repository needs the SDK it was built against; another has already moved on; a third pins an old one because a dependency has not caught up. dvm makes \"which Dart am I running?\" a property of the directory you are standing in. cd into a project and dart is that project's SDK; cd into the next one and dart is that project's SDK. Your shell profile stays out of it."
+          "h": "In the course of a week",
+          "a": "in-the-course-of-a-week",
+          "b": "Cloning a project that already pins its SDK. The .dvmrc is in the repository, so the right SDK is chosen the moment you cd in. $ cat .dvmrc { \"dart\": \"3.13.2\" } $ dart --version Dart SDK version: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on \"macos_arm64\" Seeing what is on the machine. dvm list marks what this directory resolves to with a , and tags each SDK with everything that points at it. $ dvm list Installed Dart SDKs in /Users/you/.dvm/versions: 3.13.2 global default, channel: stable 3.5.4 this project, alias: work = what /Users/you/work/legacy resolves to right now: pinned by /Users/you/work/legacy/.dvmrc via \"work\". Giving a version a name you will remember. An alias lets a .dvmrc say work where a team has settled on one SDK, and dvm reports the hop it made. $ dvm alias work 3.5.4 \"work\" now means 3.5.4. work -> 3.5.4 $ dvm which /Users/you/.dvm/versions/3.5.4/bin/dart Dart 3.5.4 Chosen by rule 2 of 5: pinned by /Users/you/work/legacy/.dvmrc. It says \"work\", an alias for 3.5.4 in /Users/you/.dvm/config.json. SDK: /Users/you/.dvm/versions/3.5.4 Building it on CI. A build machine writes every command itself, so dvm exec is all it needs: it runs the same resolution and h"
         },
         {
-          "h": "How it stays out of your way",
-          "a": "how-it-stays-out-of-your-way",
-          "b": "One way in, one way forward. An install script puts dvm on your machine and dvm update keeps it current — see Updating dvm. A file read per invocation. Resolution reads two small files and stats a directory, so dart stays fast, works offline, and works behind a firewall — see Resolution Order. A fallback you set once. A global default covers directories that pin nothing, while a project with a .dvmrc uses its own SDK."
+          "h": "Start here",
+          "a": "start-here",
+          "b": "One curl command, on a machine that has never had Dart on it. Install an SDK, pin a project, and watch dart follow the pin. The five rules that decide which SDK you get. Read this one first when something is wrong."
+        },
+        {
+          "h": "How the pieces fit",
+          "a": "how-the-pieces-fit",
+          "b": "One cache. Every SDK lives in ~/.dvm/versions/ , extracted once and shared by every project that pins it. A committed pin. .dvmrc is a small JSON file at the root of a project, and it is the one dvm file you commit. Anyone who clones the repository and has dvm gets the same SDK. A shim on PATH. ~/.dvm/shims/dart is a two-line shell script that hands off to dvm. It is what makes plain dart respect the pin. A resolution order you can inspect. Five rules, first match wins, and dvm which tells you which one answered. See Resolution Order. A fallback you set once. A global default covers directories that pin nothing, while a project with a .dvmrc uses its own SDK. A file read per invocation. Resolution reads two small files and stats a directory, so dart stays fast, works offline, and works behind a firewall. One way forward. The install script puts dvm on your machine and dvm update keeps it current — see Updating dvm."
         },
         {
           "h": "Everything else",
