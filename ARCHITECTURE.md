@@ -9,6 +9,32 @@ A per-project Dart SDK version manager. Every SDK lives in one central cache; ea
 project pins a version in a committed `.dvmrc`; `dart` resolves to the pinned SDK.
 It is to Dart what `fvm` is to Flutter.
 
+## The shape, and why it is this one
+
+Two forks define dvm, and the surrounding ecosystem has taken both of them the
+other way. They are written down here because each is cheap to undo by accident,
+and neither belongs on the front page.
+
+**The selection is per project, and it is committed.** A version manager can
+instead keep one active SDK per machine and switch it with a command — that is the
+shape `cbracken/dvm` chose, and it is why `~/.dvm` was already occupied when we got
+there (see On-disk layout). dvm makes the choice a property of the directory,
+written to a `.dvmrc` that goes into the repository. Cloning a project is then
+enough to get its SDK, two projects on different versions need no switch between
+them, and an SDK change shows up in a diff where somebody can review it. The price
+is that resolution runs on every single `dart` invocation, which is why rule 2's
+walk is held to zero network I/O — see the resolution contract below, and do not
+relax it.
+
+**`dart` itself resolves, through a shim on PATH.** The alternative is to require
+every call site to say `dvm dart …` or `dvm exec …`. dvm ships `exec` because CI
+genuinely wants an explicit form, but the shim is the default, because the callers
+that matter most — build scripts, test runners, and editors — spawn `dart` without
+asking anyone first. Anything that weakens the shim silently moves those callers
+back onto whichever `dart` happens to be first on PATH, which is the failure this
+whole design exists to prevent. It is also why `doctor` checks PATH *order* and
+shell functions that shadow `dart`, not merely that the shim file exists.
+
 ## On-disk layout
 
 ```
