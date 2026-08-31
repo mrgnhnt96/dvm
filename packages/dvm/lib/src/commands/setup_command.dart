@@ -101,17 +101,21 @@ class SetupCommand extends Command<int> {
     final shell = _shell();
     final scan = shell.scanForShadows();
 
+    // A shadow beats PATH outright and an unreadable startup file may be the
+    // one holding it, so writing would look like success while changing
+    // nothing. `_reportConflicts` prints the specifics just below.
+    //
+    // Both branches read the same value on purpose: the branch that *offers*
+    // `--write-path-line` must not offer it in the situation where the branch
+    // that *performs* it would refuse, or the user is sent to a flag that is
+    // guaranteed to decline.
+    final blocked = scan.shadows.isNotEmpty || scan.unreadable.isNotEmpty;
+
     var declined = false;
     if (write) {
-      // A shadow beats PATH outright and an unreadable startup file may be
-      // the one holding it, so writing would look like success while changing
-      // nothing. `_reportConflicts` prints the specifics just below.
-      declined = !_writePathLine(
-        shell,
-        blocked: scan.shadows.isNotEmpty || scan.unreadable.isNotEmpty,
-      );
+      declined = !_writePathLine(shell, blocked: blocked);
     } else {
-      _printPathInstructions(shell);
+      _printPathInstructions(shell, blocked: blocked);
     }
 
     final conflicts = _reportConflicts(scan);
@@ -180,7 +184,10 @@ class SetupCommand extends Command<int> {
       );
 
   /// The PATH line, named for the shell the user is actually in.
-  void _printPathInstructions(ShellFacts shell) {
+  ///
+  /// [blocked] is the same fact [_writePathLine] refuses on, threaded through
+  /// so the offer below cannot point at a flag that would decline.
+  void _printPathInstructions(ShellFacts shell, {required bool blocked}) {
     final line = shell.pathLine(context.paths.shimsDir);
     final rcFile = shell.primaryRcFile;
 
@@ -220,7 +227,29 @@ class SetupCommand extends Command<int> {
       ..writeln()
       ..writeln('It has to go ahead of anything else that puts a dart on '
           'PATH, and it only takes effect in shells started after you save '
-          'the file.');
+          'the file.')
+      ..writeln();
+
+    // Only for a shell with a startup file dvm can name: the PowerShell and
+    // no-rc-file branches above return before here, because `--write-path-line`
+    // has nothing to write in either.
+    if (blocked) {
+      // The flag would refuse in this exact state, so pointing at it as the
+      // next step would send the user to a guaranteed no-op. The shadow comes
+      // first; the flag is what to run once it is gone.
+      context.out
+        ..writeln('dvm could add that line for you, but not yet: something in '
+            'your startup files would beat it, or dvm could not read a file '
+            'that might — see the warnings below.')
+        ..writeln('Clear that first and start a new shell, then run: '
+            'dvm setup --write-path-line');
+      return;
+    }
+
+    context.out
+      ..writeln('Or let dvm add it for you: dvm setup --write-path-line')
+      ..writeln('It backs ${rcFile.path} up before touching it, and '
+          'dvm setup --remove-path-line takes the line back out.');
   }
 
   /// Adds the PATH line to the startup file. Returns whether it got there.

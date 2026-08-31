@@ -79,6 +79,103 @@ void main() {
     expect(harness.output, contains('fish_add_path --prepend /dvm/shims'));
   });
 
+  group('advertising --write-path-line', () {
+    // The incident behind this: a user was told to add a line to `.zshrc`,
+    // did it by hand, and never learned that dvm would have done it for them,
+    // backup included. The flag was not new — it was invisible.
+
+    test('offers the flag alongside the line to copy, and says it backs up',
+        () async {
+      harness.fileSystem.file('/home/dev/.zshrc')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('export EDITOR=vim\n');
+
+      expect(await harness.run(['setup', '--dvm-path', installDvmBinary()]), 0);
+
+      expect(harness.output, contains('dvm setup --write-path-line'));
+      // A user is much likelier to accept an offer to edit their own startup
+      // file when told what it does to it first.
+      expect(harness.output, contains('backs /home/dev/.zshrc up'));
+      expect(harness.output, contains('dvm setup --remove-path-line'));
+    });
+
+    test('offers the flag when the rc file does not exist yet', () async {
+      // The `Create` branch: --write-path-line handles this too, so the offer
+      // has to be there as well.
+      expect(harness.fileSystem.file('/home/dev/.zshrc').existsSync(), isFalse);
+
+      expect(await harness.run(['setup', '--dvm-path', installDvmBinary()]), 0);
+
+      expect(harness.output, contains('Create /home/dev/.zshrc'));
+      expect(harness.output, contains('dvm setup --write-path-line'));
+    });
+
+    test('does not offer the flag on PowerShell', () async {
+      // The flag's own help says it is not available for PowerShell, which
+      // takes PATH from the environment rather than a startup file, and
+      // `_editorFor` refuses there. Naming it would be an offer that cannot
+      // be taken up.
+      harness.environment['SHELL'] = '/usr/bin/powershell';
+
+      expect(await harness.run(['setup', '--dvm-path', installDvmBinary()]), 0);
+
+      expect(harness.output, contains('SetEnvironmentVariable'));
+      expect(harness.output, isNot(contains('--write-path-line')));
+    });
+
+    test('does not offer the flag when the environment names no home',
+        () async {
+      // No HOME and no USERPROFILE: there is no file to write, so the flag
+      // cannot help.
+      harness.environment.remove('HOME');
+
+      expect(await harness.run(['setup', '--dvm-path', installDvmBinary()]), 0);
+
+      expect(harness.output, contains('Add this to your shell startup file'));
+      expect(harness.output, contains(r'export PATH="/dvm/shims:$PATH"'));
+      expect(harness.output, isNot(contains('--write-path-line')));
+    });
+
+    test('under a shadowed shell, says clear the shadow before the flag',
+        () async {
+      // The regression guard. `--write-path-line` REFUSES while a shadow is
+      // present, so offering it as the immediate next step would send the
+      // user to a flag guaranteed to decline — reproducing the exact
+      // confusion this change exists to remove.
+      harness.fileSystem.file('/home/dev/.zshrc')
+        ..createSync(recursive: true)
+        ..writeAsStringSync(
+          'export EDITOR=vim\n'
+          '[ -s "\$HOME/.dvm/scripts/dvm" ] && . "\$HOME/.dvm/scripts/dvm"\n',
+        );
+
+      expect(await harness.run(['setup', '--dvm-path', installDvmBinary()]), 1);
+
+      expect(harness.output, isNot(contains('Or let dvm add it for you')));
+      expect(harness.output, contains('not yet'));
+      expect(harness.output, contains('Clear that first'));
+      // The flag is still named — as what to run afterwards, not now.
+      expect(harness.output, contains('dvm setup --write-path-line'));
+      expect(harness.errors, contains('WARNING'));
+    });
+
+    test('does not offer the flag to a user who just passed it', () async {
+      harness.fileSystem.file('/home/dev/.zshrc')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('export EDITOR=vim\n');
+
+      expect(
+        await harness.run(
+          ['setup', '--dvm-path', installDvmBinary(), '--write-path-line'],
+        ),
+        0,
+      );
+
+      expect(harness.output, contains('Added this line to /home/dev/.zshrc'));
+      expect(harness.output, isNot(contains('--write-path-line')));
+    });
+  });
+
   test('warns loudly and fails when a dvm shell function shadows the binary',
       () async {
     harness.fileSystem.file('/home/dev/.zshrc')
