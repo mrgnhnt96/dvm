@@ -86,10 +86,46 @@
   - "dart pub get && dart analyze"
   - "cd packages/dvm && dart test"
 
-# The install script is shipped to users verbatim over curl. It has no test
-# suite; syntax-checking it is the one mechanical check that can fail.
+# The install script is shipped to users verbatim over curl, and it now HAS a
+# test suite: tool/test_install_sh.sh sources it with DVM_INSTALL_SH_LIB=1 and
+# drives its pure functions — target detection, the release-JSON parsing, the
+# startup-file shadow scan, and the closing message a user actually reads.
+#
+# This rule used to be `sh -n install.sh` alone, with a comment saying the
+# script had no suite. That comment outlived the fact: the suite was added with
+# the shadow scan and CI ran it from the start, so for the life of that leaf the
+# gate went green on a parse check while the 69 assertions that guard the
+# behaviour ran only after push. That is the "check that cannot fail" this
+# file's header warns about — not a command that cannot fail, but one that fails
+# at different things than CI does.
+#
+# These are the commands .github/workflows/test.yml runs in its "Check
+# install.sh" step, pasted rather than approximated. release.yml runs a subset.
+#
+# DIVERGENCE, stated rather than left to be discovered: shellcheck is
+# conditional in CI too — preinstalled on the ubuntu images, absent on the macOS
+# ones — so the `command -v` guard below is CI's own, not a local weakening of
+# it. On a machine without shellcheck this rule is `sh -n` plus the suite,
+# exactly as a macOS runner is, and the lint gap is closed by the ubuntu job.
 "install.sh":
   - "sh -n install.sh"
+  - "if command -v shellcheck > /dev/null 2>&1; then shellcheck --shell=sh install.sh; else echo 'shellcheck not present; ran sh -n only'; fi"
+  - "sh tool/test_install_sh.sh"
+
+# The suite that guards install.sh guards nothing if it is not itself run when
+# it changes: a broken assertion lands green and install.sh silently stops being
+# covered, which is the same failure as above one level further out.
+"tool/test_install_sh.sh":
+  - "sh -n install.sh"
+  - "sh tool/test_install_sh.sh"
+
+# The release scripts. `bash -n` is what test.yml runs on them ("Check the
+# release scripts parse") and it is all that can run here: executing them for
+# real packages and uploads release artifacts.
+"tool/stamp_version.sh":
+  - "bash -n tool/stamp_version.sh"
+"tool/package_release_assets.sh":
+  - "bash -n tool/package_release_assets.sh"
 
 # The docs site. The slot the `unchecked-ok` note below reserved.
 #
