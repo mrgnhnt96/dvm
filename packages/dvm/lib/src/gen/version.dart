@@ -28,10 +28,28 @@ const String kVersion = '0.1.0';
 /// [kVersion], and nothing here asks it to. The alpha build stamps [kVersion]
 /// from the pubspec, exactly as a dry run does, and puts its identity here.
 ///
-/// Nothing compares this. `dvm update` and the version notice both read
-/// [kVersion], so an alpha compares as the version it was cut from and no
-/// version arithmetic anywhere has to learn about build metadata.
+/// NO VERSION ARITHMETIC READS THIS, and none can. Semver ignores build
+/// metadata for precedence, so `0.1.0+alpha.gaaaaaaa`, `0.1.0+alpha.gbbbbbbb`
+/// and a plain `0.1.0` all compare EQUAL — three different codebases with one
+/// ordering between them. `dvm update` and the version notice therefore read
+/// [kVersion] and compare an alpha as the version it was cut from; the alpha
+/// channel asks a different question instead ("is this the same COMMIT?"), and
+/// `Updater.currentCommit` is where that is read from.
 const String kBuildTag = '';
+
+/// [version] joined to [buildTag] as semver build metadata, or [version] alone
+/// when there is no build tag.
+///
+/// Beside the two constants it joins rather than in `dvm.dart`, because the
+/// updater needs it too — an alpha's `from` in `dvm update` output is the
+/// version it REPORTS, not the bare [kVersion] it was cut from — and
+/// `lib/src/core/updater.dart` cannot import the library that exports it.
+///
+/// Pulled out of `version()` so it is testable without a stamped binary: the
+/// checked-in [kBuildTag] is empty, so a test calling `version()` can only ever
+/// exercise the release half of this.
+String buildVersion(String version, String buildTag) =>
+    buildTag.isEmpty ? version : '$version+$buildTag';
 
 /// Whether this process is an AOT binary produced by the release build.
 ///

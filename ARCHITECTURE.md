@@ -388,7 +388,12 @@ resolve "latest" to a release with no CLI binary in it.
 scans the same page for the newest entry that IS flagged prerelease; every other
 invocation scans for the newest that is not. Neither falls back to the other: a plain
 install must not land on unreleased code, and `--alpha` refusing is better than
-`--alpha` quietly installing the release the user did not ask for.
+`--alpha` quietly installing the release the user did not ask for. `dvm update --alpha`
+and `dvm update --stable` are the same two channels from inside the CLI, with the same
+whitelist rule — a SECOND scan (`latestAlphaRelease`) rather than a relaxed first one,
+so the stable path stays structurally unable to resolve to a prerelease. Neither flag is
+written to config: a stored channel would change what a later bare `dvm update` does,
+long after anyone remembers setting it.
 
 The alpha side is **one rolling prerelease**, tagged `alpha`, deleted and recreated on
 every push to `main` by `.github/workflows/alpha.yml`. One tag rather than a tag per
@@ -403,9 +408,21 @@ appends as semver build metadata: `0.2.0+alpha.g1a2b3c4`. It is a second constan
 than a wider `kVersion` because `tool/stamp_version.sh` refuses a version the pubspec does
 not claim, and that refusal is what stops a published binary lying about its version. The
 alpha stamps `kVersion` from the pubspec — which that check can never refuse — and says
-"alpha, from this commit" separately. Nothing compares `kBuildTag`; `dvm update` and the
-version notice both read `kVersion`, so no version arithmetic has to learn about build
-metadata.
+"alpha, from this commit" separately. No version arithmetic reads `kBuildTag`, and none
+can: semver ignores build metadata for precedence, so every alpha of `0.2.0` compares
+EQUAL to every other and to the `0.2.0` release itself. The version notice and the stable
+update path therefore read `kVersion` and treat an alpha as the version it was cut from.
+
+**The alpha channel asks a different question, and it has to.** "Is there a newer alpha?"
+cannot be a comparison — the answer would be no forever, printed as "already up to date"
+on a machine dozens of commits behind. It is an IDENTITY check: is the published alpha a
+DIFFERENT commit from the one this binary was built from? The installed side reads the
+commit out of `kBuildTag` (`Updater.currentCommit`); the published side reads it from the
+release's `target_commitish`, which `alpha.yml` sets to the built commit by recreating
+the tag with `--target "$GITHUB_SHA"`, falling back to the `dvm alpha (<sha>)` title.
+The same fact is why a bare `dvm update` on an alpha reports neither "up to date" nor a
+silent downgrade: it installs a release only when that release is genuinely ahead, and
+otherwise names `--alpha` and `--stable` and touches nothing.
 
 Replacing the running binary works on POSIX because `rename` over a running executable
 keeps the inode alive, so temp-file-then-rename is safe. Windows cannot replace a
