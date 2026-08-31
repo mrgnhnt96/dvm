@@ -239,5 +239,14 @@ class DvmCommandRunner extends CommandRunner<int> {
   }
 }
 
-/// The version of this build of dvm.
-String version() => kVersion;
+/// The version of this build of dvm, including its build tag when it has one.
+String version() => buildVersion(kVersion, kBuildTag);
+
+/// [version] joined to [buildTag] as semver build metadata, or [version] alone
+/// when there is no build tag.
+///
+/// Pulled out of [version] so it is testable without a stamped binary: the
+/// checked-in `kBuildTag` is empty, so a test calling [version] can only ever
+/// exercise the release half of this.
+String buildVersion(String version, String buildTag) =>
+    buildTag.isEmpty ? version : '$version+$buildTag';

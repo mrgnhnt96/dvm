@@ -3,6 +3,16 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | sh
 #
+# Options:
+#   --alpha       install the rolling alpha (the latest main) instead of the
+#                 newest stable release
+#   -h, --help    print the usage and exit
+#
+# PIPED INTO A SHELL, OPTIONS GO AFTER `-s --`. That is not this script's
+# convention, it is sh's: without it the words are read as sh's own arguments.
+#
+#   curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | sh -s -- --alpha
+#
 # POSIX sh on purpose, not bash: this is the FIRST thing that runs on a machine
 # that may have nothing on it, and Debian's /bin/sh is dash, Alpine's is busybox
 # ash, and neither is bash. Nothing below uses [[ ]], arrays, `local`, or ${x^^}.
@@ -20,6 +30,9 @@ set -eu
 REPO="mrgnhnt96/dvm"
 API="https://api.github.com/repos/${REPO}"
 DOWNLOADS="https://github.com/${REPO}/releases/download"
+# Named here so the alpha notice can hand back the command that undoes it,
+# rather than a second copy of the URL that can drift from the one above.
+INSTALLER="https://raw.githubusercontent.com/${REPO}/main/install.sh"
 
 die() {
   echo "dvm install: $*" >&2
@@ -32,6 +45,49 @@ info() {
 
 need() {
   command -v "$1" > /dev/null 2>&1
+}
+
+# --- how to be asked for something else ---------------------------------------
+
+# Written with `info` rather than a heredoc so `usage >&2` sends every line to
+# stderr, which is where a usage error's usage belongs and a heredoc's `cat`
+# would not follow.
+usage() {
+  info "Install dvm, the per-project Dart SDK version manager."
+  info ""
+  info "Usage:"
+  info "  sh install.sh [options]"
+  info "  curl -fsSL ${INSTALLER} | sh"
+  info "  curl -fsSL ${INSTALLER} | sh -s -- --alpha"
+  info ""
+  info "Options:"
+  info "  --alpha       install the rolling alpha instead of the newest stable"
+  info "                release. The alpha is built from main on every push, so"
+  info "                it is unreleased code that nobody chose to publish. Only"
+  info "                ever installed when asked for by name."
+  info "  -h, --help    print this and exit"
+  info ""
+  info "Environment:"
+  info "  DVM_VERSION   install this exact version (0.2.0 or v0.2.0). Names a"
+  info "                tag, so it cannot be combined with --alpha."
+  info "  DVM_HOME      install under here instead of ~/.dvm"
+  info "  GITHUB_TOKEN  used if set; the API's unauthenticated limit is"
+  info "                60/hour/IP"
+}
+
+# A flag this script does not understand. NOT ignored, which is the tempting
+# thing to do in a script that is usually run with no arguments at all: a
+# silently dropped `--alpha` installs the stable release and says the install
+# worked, so the user reads a correct-looking success message for the opposite
+# of what they asked for.
+#
+# Exits 2 rather than 1 so a wrapper can tell "you typed it wrong" (nothing was
+# attempted) from "the install failed" (something was).
+usage_error() {
+  echo "dvm install: $*" >&2
+  echo "" >&2
+  usage >&2
+  exit 2
 }
 
 # --- what are we installing for -----------------------------------------------
@@ -128,7 +184,17 @@ fetch_file() {
 }
 
 # The newest release tag that actually carries "$1", reading the API's JSON on
-# stdin.
+# stdin. "$2" is the channel and defaults to "stable":
+#
+#   stable   only releases NOT flagged prerelease  (a plain install)
+#   alpha    only releases that ARE               (`--alpha`)
+#
+# EACH CHANNEL IS A WHITELIST, and neither falls back to the other. "stable, or
+# the newest prerelease if there is no release" would install unreleased code on
+# a machine that never asked for it; "alpha, or the newest release if there is no
+# prerelease" hands back something OTHER than the main the user asked for, with a
+# success message in front of it. Empty output is the honest answer to both, and
+# the caller turns it into a refusal that names the other channel.
 #
 # NOT /releases/latest. GitHub's "latest" is the newest non-draft non-prerelease
 # release of any kind, so the day this repo publishes a release for something
@@ -152,16 +218,50 @@ fetch_file() {
 # like a rate limit on a machine where the releases are plainly there.
 # `dvm update` never had this failure: updater.dart hands the body to a real
 # JSON parser rather than to grep.
-pick_tag() {
-  pick_asset="$1"
+# One line per non-draft release, newest first, reading the API's JSON on stdin.
+# The half of pick_tag that both channels share; a draft is nobody's release.
+release_records() {
   tr '\n' ' ' \
     | awk '{ gsub(/"tag_name"/, "\n&"); print }' \
     | grep '"tag_name"' \
-    | grep -v '"draft"[[:space:]]*:[[:space:]]*true' \
-    | grep -v '"prerelease"[[:space:]]*:[[:space:]]*true' \
-    | grep -F "\"${pick_asset}\"" \
+    | grep -v '"draft"[[:space:]]*:[[:space:]]*true'
+}
+
+# The tag of the first record on stdin that carries the asset "$1". The records
+# arrive newest-first, so "first" is "newest".
+newest_tag_carrying() {
+  grep -F "\"$1\"" \
     | head -n 1 \
     | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+}
+
+pick_tag() {
+  pick_asset="$1"
+  pick_channel="${2:-stable}"
+
+  # Spelled out per branch rather than folding grep's `-v` into a variable, for
+  # the same reason fetch_text spells its header out twice: an expansion that is
+  # sometimes empty has to be unquoted to disappear, and an unquoted expansion
+  # is a word-splitting bug waiting for the next maintainer.
+  case "${pick_channel}" in
+    stable)
+      release_records \
+        | grep -v '"prerelease"[[:space:]]*:[[:space:]]*true' \
+        | newest_tag_carrying "${pick_asset}"
+      ;;
+    alpha)
+      release_records \
+        | grep '"prerelease"[[:space:]]*:[[:space:]]*true' \
+        | newest_tag_carrying "${pick_asset}"
+      ;;
+    *)
+      # Unreachable from the command line — main only ever passes one of the
+      # two — and a refusal rather than a default because the tempting default
+      # is "stable", which would turn a typo in a future caller into a silent
+      # channel switch.
+      die "internal error: unknown release channel [${pick_channel}]."
+      ;;
+  esac
 }
 
 # --- install ------------------------------------------------------------------
@@ -435,12 +535,113 @@ print_next_steps() {
   return 0
 }
 
+# --- an alpha says so ---------------------------------------------------------
+
+# Says out loud that what was just installed is an alpha, and which one. "$1" is
+# the tag it was installed from, "$2" the installed binary's path.
+#
+# A PARAGRAPH AND NOT A WORD IN THE "installed at" LINE. The reader of this
+# message is often not the person who typed the flag — it is pasted from an
+# issue thread, a README fork, or their own shell history a month later — and
+# `--alpha` is a thing whose consequences arrive later: unreleased code, and an
+# update path that does not lead back here. A tag on the end of a success line
+# is skimmed past; this is not.
+#
+# It never changes the exit status. The binary asked for is on disk and good.
+announce_alpha() {
+  info ""
+  info "!! That is an ALPHA build of dvm: the latest main, not a release."
+  info ""
+  info "   installed from tag: $1"
+  info ""
+  info "   Nobody chose to publish this code — a push to main did. It has had"
+  info "   CI run on it and nothing else. Two things follow that are worth"
+  info "   knowing now rather than in a month:"
+  info ""
+  info "   - \`dvm update\` will never move you to a NEWER alpha. It only"
+  info "     installs stable releases (its release scan skips prereleases, the"
+  info "     same way a plain run of this script does), so the way to a fresher"
+  info "     alpha is to run this again with --alpha."
+  info "   - it WILL move you off this build once a stable release is newer"
+  info "     than the version this alpha was cut from — and that release can"
+  info "     be missing the very work you installed an alpha to get."
+  info ""
+  info "   What you are running, at any point:"
+  info ""
+  info "     $2 --version"
+  info ""
+  info "   An alpha reports a \`+alpha.<commit>\` suffix there, so \"is this an"
+  info "   alpha, and which commit?\" stays answerable without remembering"
+  info "   today. A plain release reports a bare version and no suffix."
+  info ""
+  info "   To go back to the newest supported build:"
+  info ""
+  info "     curl -fsSL ${INSTALLER} | sh"
+
+  return 0
+}
+
 main() {
+  # The channel is decided before anything is read from the network or the
+  # filesystem, so a typo costs nothing and cannot half-install.
+  channel="stable"
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --alpha) channel="alpha" ;;
+      -h | --help)
+        usage
+        return 0
+        ;;
+      *)
+        # Positional arguments land here too, deliberately: this script takes
+        # none, and `sh install.sh 0.2.0` is a real mistake to make. The usage
+        # printed alongside names DVM_VERSION, which is what that user wanted.
+        usage_error "unknown option: $1"
+        ;;
+    esac
+    shift
+  done
+
   target="$(detect_target)"
   asset="dvm-${target}.zip"
 
   if [ -n "${DVM_VERSION:-}" ]; then
+    # REFUSED RATHER THAN RANKED. Honouring one and dropping the other is a
+    # coin toss between two different installs, and whichever way it lands the
+    # user is told the install succeeded. There is no spelling of DVM_VERSION
+    # that means "the alpha" either: the value is turned into a `v`-prefixed
+    # tag two lines below, and the alpha's tag does not start with a `v`.
+    if [ "${channel}" = "alpha" ]; then
+      die "--alpha and DVM_VERSION ask for two different things.
+
+  DVM_VERSION=${DVM_VERSION} names one exact tag and skips the release lookup.
+  --alpha asks for whichever prerelease is newest, which is a tag nobody can
+  name in advance.
+
+Nothing was installed. Drop one of them:
+
+  for the newest alpha:
+    sh install.sh --alpha
+
+  for exactly ${DVM_VERSION}:
+    DVM_VERSION=${DVM_VERSION} sh install.sh"
+    fi
     tag="v${DVM_VERSION#v}"
+  elif [ "${channel}" = "alpha" ]; then
+    info "Looking up the newest dvm alpha..."
+    tag="$(fetch_text "${API}/releases?per_page=100" | pick_tag "${asset}" alpha)"
+    # NO FALLBACK TO THE STABLE RELEASE, and the message says so out loud. The
+    # user asked for main; the newest release is not main, and installing it
+    # under a success message would be answering a different question.
+    [ -n "${tag}" ] || die "could not find a published PRERELEASE carrying
+${asset}, and --alpha installs nothing else.
+
+Check https://github.com/${REPO}/releases — if prereleases are listed there,
+this is probably the GitHub API rate limit; set GITHUB_TOKEN and retry.
+
+Nothing was installed. The newest STABLE release was deliberately NOT installed
+in its place: you asked for main. To install it, run this again without --alpha."
   else
     info "Looking up the newest dvm release..."
     tag="$(fetch_text "${API}/releases?per_page=100" | pick_tag "${asset}")"
@@ -482,6 +683,13 @@ asset; try again, and if it keeps happening do not install it."
 
   info ""
   info "dvm ${tag} is installed at ${bin_dir}/dvm"
+
+  # BEFORE the next steps rather than after the shadow warning, because this is
+  # about WHAT was installed and those are about what to do with it. The shadow
+  # warning stays last on screen; nothing here competes with it.
+  if [ "${channel}" = "alpha" ]; then
+    announce_alpha "${tag}" "${bin_dir}/dvm"
+  fi
 
   # Scanned BEFORE anything is printed, because the answer changes the message:
   # a shadowed shell gets a pointer at the fix instead of the one-step command,
