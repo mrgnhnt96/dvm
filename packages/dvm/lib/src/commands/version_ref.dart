@@ -56,8 +56,9 @@ VersionRef resolveVersionRef(DvmContext context, String pin) {
   for (var hop = 0; hop < maxAliasHops; hop++) {
     if (!seen.add(current)) {
       throw ConfigException(
-        'The alias "$current" in ${context.paths.configFile.path} points at '
-        'itself. Fix it with: dvm alias $current <version>',
+        'The alias "$current" in '
+        '${context.display(context.paths.configFile.path)} points at itself. '
+        'Fix it with: dvm alias $current <version>',
       );
     }
 
@@ -92,9 +93,9 @@ VersionRef resolveVersionRef(DvmContext context, String pin) {
   }
 
   throw ConfigException(
-    'The alias "$pin" in ${context.paths.configFile.path} goes through more '
-    'than $maxAliasHops aliases without reaching a version. Point it straight '
-    'at one: dvm alias $pin <version>',
+    'The alias "$pin" in ${context.display(context.paths.configFile.path)} '
+    'goes through more than $maxAliasHops aliases without reaching a version. '
+    'Point it straight at one: dvm alias $pin <version>',
   );
 }
 
@@ -113,8 +114,8 @@ Future<void> ensureInstalled(DvmContext context, VersionRef ref) async {
   if (!context.installer.isInstalled(ref.version)) {
     throw SdkNotInstalledException(
       'Installing Dart ${ref.version} finished without leaving an SDK at '
-      '${context.paths.versionDir(ref.version).path}. Try again with: '
-      'dvm install ${ref.version} --force',
+      '${context.display(context.paths.versionDir(ref.version).path)}. '
+      'Try again with: dvm install ${ref.version} --force',
       version: ref.version,
     );
   }
@@ -139,7 +140,7 @@ void writeGlobal(DvmContext context, VersionRef ref) {
   if (previous != null && previous != ref.version) {
     context.out.writeln('  was: $previous');
   }
-  context.out.writeln('  ${context.paths.configFile.path}');
+  context.out.writeln('  ${context.display(context.paths.configFile.path)}');
   context.out.writeln(
     'A directory with a .dvmrc still uses what its .dvmrc says.',
   );

@@ -41,6 +41,14 @@ Link linkProjectSdk({
     );
     link.deleteSync();
   } else if (existing != FileSystemEntityType.notFound) {
+    // ABSOLUTE, unlike the `.dvm/dart_sdk` that `dvm use` prints on success.
+    // Two reasons, and both are why this is not an oversight: this helper is
+    // core, it has no [DvmContext] and therefore no `display`, and the same
+    // is true of the `WindowsSdkLinker` failure below — which sits behind a
+    // `const` seam with nowhere to inject one. Converting only the half that
+    // is reachable would leave dvm printing one path two ways in adjacent
+    // failure modes. And a message telling somebody to go and delete a file
+    // by hand is the one place a path is worth spelling out in full.
     throw ConfigException(
       '${link.path} already exists and is not a symlink, so dvm will not '
       'replace it. Delete it and run this again.',

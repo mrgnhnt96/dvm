@@ -157,7 +157,7 @@ class AliasCommand extends Command<int> {
     final width = names.map((n) => n.length).reduce((a, b) => a > b ? a : b);
 
     context.out
-      ..writeln('Aliases in ${context.paths.configFile.path}:')
+      ..writeln('Aliases in ${context.display(context.paths.configFile.path)}:')
       ..writeln();
     for (final aliasName in names) {
       context.out.writeln(

@@ -167,8 +167,8 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'PATH',
-          summary: '${shims.path} is not on PATH, so `dart` does not go '
-              'through dvm.',
+          summary: '${context.display(shims.path)} is not on PATH, so '
+              '`dart` does not go through dvm.',
           details: order(),
           remedy: '${shell.pathLineAction}: $line',
         ),
@@ -181,7 +181,7 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'PATH',
-          summary: '${shims.path} is on PATH but '
+          summary: '${context.display(shims.path)} is on PATH but '
               '${ahead.length == 1 ? 'an entry ahead of it provides' : '${ahead.length} entries ahead of it provide'} '
               'a dart, so the shim is never reached.',
           details: order(),
@@ -194,7 +194,8 @@ class DoctorCommand extends Command<int> {
       DoctorFinding(
         severity: DoctorSeverity.ok,
         area: 'PATH',
-        summary: '${shims.path} is on PATH ahead of every other dart.',
+        summary: '${context.display(shims.path)} is on PATH ahead of every '
+            'other dart.',
         details: providers.isEmpty ? const [] : order(),
       ),
     ];
@@ -213,7 +214,7 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'shims',
-          summary: '${shim.path} does not exist.',
+          summary: '${context.display(shim.path)} does not exist.',
           remedy: 'Run: dvm setup',
         ),
       ];
@@ -229,7 +230,7 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'shims',
-          summary: '${shim.path} exists but could not be read '
+          summary: '${context.display(shim.path)} exists but could not be read '
               '(${error.message}), so dvm cannot say what it runs.',
           remedy: 'Check its permissions, then run: dvm setup',
         ),
@@ -241,7 +242,8 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'shims',
-          summary: '${shim.path} is not recognisable as a dvm shim.',
+          summary: '${context.display(shim.path)} is not recognisable as a '
+              'dvm shim.',
           remedy: 'Overwrite it with: dvm setup',
         ),
       ];
@@ -253,7 +255,8 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'shims',
-          summary: '${shim.path} runs $target, which no longer exists.',
+          summary: '${context.display(shim.path)} runs '
+              '${context.display(target)}, which no longer exists.',
           details: const [
             'Every `dart` on this machine fails until this is fixed.',
           ],
@@ -269,8 +272,9 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'shims',
-          summary: '${shim.path} is not executable.',
-          remedy: 'chmod 755 ${shim.path}  (or run: dvm setup)',
+          summary: '${context.display(shim.path)} is not executable.',
+          remedy: 'chmod 755 ${context.display(shim.path)}  '
+              '(or run: dvm setup)',
         ),
       );
     }
@@ -280,7 +284,8 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.ok,
           area: 'shims',
-          summary: '${shim.path} runs $target.',
+          summary: '${context.display(shim.path)} runs '
+              '${context.display(target)}.',
         ),
       );
     }
@@ -337,11 +342,13 @@ class DoctorCommand extends Command<int> {
           severity: DoctorSeverity.warn,
           area: 'shell',
           summary: 'an older dvm (cbracken/dvm) shares '
-              '${context.paths.home.path}.',
+              '${context.display(context.paths.home.path)}.',
           details: [
             if (legacy.script case final script?)
-              '${script.path}  (sourcing this is what defines the function)',
-            for (final directory in legacy.directories) directory.path,
+              '${context.display(script.path)}  '
+                  '(sourcing this is what defines the function)',
+            for (final directory in legacy.directories)
+              context.display(directory.path),
           ],
           remedy: 'Import its SDKs with: dvm migrate',
         ),
@@ -359,7 +366,8 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.ok,
           area: 'config',
-          summary: 'no ${file.path} yet, which is the normal state before a '
+          summary: 'no ${context.display(file.path)} yet, which is the '
+              'normal state before a '
               'global default is set.',
         ),
       ];
@@ -374,7 +382,8 @@ class DoctorCommand extends Command<int> {
           severity: DoctorSeverity.fail,
           area: 'config',
           summary: error.message,
-          remedy: 'Fix ${file.path}, or delete it to start over.',
+          remedy: 'Fix ${context.display(file.path)}, or delete it to start '
+              'over.',
         ),
       ];
     }
@@ -384,7 +393,8 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.ok,
           area: 'config',
-          summary: '${file.path} is valid; no global default is set.',
+          summary: '${context.display(file.path)} is valid; no global '
+              'default is set.',
         ),
       ];
     }
@@ -415,7 +425,8 @@ class DoctorCommand extends Command<int> {
               '${ref.isDirect ? '' : ' (${ref.trail})'}, which is not '
               'installed.',
           details: [
-            'Nothing is at ${context.paths.versionDir(ref.version).path}',
+            'Nothing is at '
+                '${context.display(context.paths.versionDir(ref.version).path)}',
             'Every directory without a .dvmrc fails until this is fixed.',
           ],
           remedy: 'dvm install ${ref.version}  (or: dvm global <version>)',
@@ -427,7 +438,8 @@ class DoctorCommand extends Command<int> {
       DoctorFinding(
         severity: DoctorSeverity.ok,
         area: 'config',
-        summary: '${file.path} is valid; the global default Dart '
+        summary: '${context.display(file.path)} is valid; the global '
+            'default Dart '
             '${ref.version} is installed.',
       ),
     ];
@@ -441,6 +453,8 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.ok,
           area: 'project',
+          // The working directory itself: absolute by the display rule, and
+          // by intent — the line is about where "here" is.
           summary: 'no .dvmrc at or above ${context.workingDirectory.path}, so '
               'the global default applies here.',
         ),
@@ -471,7 +485,8 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'project',
-          summary: '${rcFile.path} pins "$pin", which cannot be resolved: '
+          summary: '${context.display(rcFile.path)} pins "$pin", which '
+              'cannot be resolved: '
               '${error.message}',
           remedy: 'Pin a version that exists: dvm use <version>',
         ),
@@ -484,7 +499,7 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.ok,
           area: 'project',
-          summary: '${rcFile.path} pins Dart ${ref.version}'
+          summary: '${context.display(rcFile.path)} pins Dart ${ref.version}'
               '${ref.isDirect ? '' : ' (${ref.trail})'}, which is installed.',
         ),
       );
@@ -493,7 +508,7 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'project',
-          summary: '${rcFile.path} pins Dart ${ref.version}'
+          summary: '${context.display(rcFile.path)} pins Dart ${ref.version}'
               '${ref.isDirect ? '' : ' (${ref.trail})'}, which is not '
               'installed.',
           remedy: 'dvm install ${ref.version}',
@@ -522,7 +537,8 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.warn,
           area: 'project',
-          summary: '${link.path} exists but is not a symlink, so dvm will not '
+          summary: '${context.display(link.path)} exists but is not a '
+              'symlink, so dvm will not '
               'replace it.',
           remedy: 'Delete it, then run: dvm use <version>',
         ),
@@ -537,8 +553,8 @@ class DoctorCommand extends Command<int> {
         DoctorFinding(
           severity: DoctorSeverity.fail,
           area: 'project',
-          summary: '${link.path} is a stale symlink: it points at $target, '
-              'which has been removed.',
+          summary: '${context.display(link.path)} is a stale symlink: it '
+              'points at ${context.display(target)}, which has been removed.',
           details: const [
             'An IDE following it will report a broken or missing SDK.',
           ],
@@ -556,9 +572,10 @@ class DoctorCommand extends Command<int> {
           DoctorFinding(
             severity: DoctorSeverity.warn,
             area: 'project',
-            summary: '${link.path} points at $target, but this project pins '
+            summary: '${context.display(link.path)} points at '
+                '${context.display(target)}, but this project pins '
                 'Dart $version.',
-            details: ['Expected it to point at $expected'],
+            details: ['Expected it to point at ${context.display(expected)}'],
             remedy: 'Re-point it: dvm use $version',
           ),
         ];
@@ -569,7 +586,8 @@ class DoctorCommand extends Command<int> {
       DoctorFinding(
         severity: DoctorSeverity.ok,
         area: 'project',
-        summary: '${link.path} points at $target.',
+        summary: '${context.display(link.path)} points at '
+            '${context.display(target)}.',
       ),
     ];
   }

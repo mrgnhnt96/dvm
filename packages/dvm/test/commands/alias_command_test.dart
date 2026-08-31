@@ -167,7 +167,8 @@ void main() {
       harness.fileSystem.file('/project/.dvmrc').writeAsStringSync('work');
 
       expect(await harness.run(['unalias', 'work']), 0);
-      expect(harness.errors, contains('/project/.dvmrc still pins "work"'));
+      expect(harness.errors, contains('.dvmrc still pins "work"'));
+      expect(harness.errors, isNot(contains('/project/.dvmrc')));
     });
 
     test('naming nothing is a usage error', () async {

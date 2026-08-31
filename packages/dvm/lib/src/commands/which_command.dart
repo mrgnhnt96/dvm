@@ -32,6 +32,13 @@ class WhichCommand extends Command<int> {
     // rules and what to run, which is exactly what `which` would print.
     final resolved = context.resolver.resolve(from: context.workingDirectory);
 
+    // ABSOLUTE, unconditionally, and NOT through `context.display`. These two
+    // lines are the machine-readable ones: `--path` is the flag's entire
+    // output, and the first line of the default output is what
+    // `dvm which | head -1` takes. A relative path resolves against the
+    // CALLER's working directory, which is not necessarily dvm's, so a
+    // consumer handed `.dvm/dart_sdk/bin/dart` silently points at nothing.
+    // Everything below here is prose for a human and follows the normal rule.
     if (argResults!.flag('path')) {
       context.out.writeln(resolved.executable.path);
       return 0;
@@ -46,7 +53,7 @@ class WhichCommand extends Command<int> {
     final indirection = _explainIndirection(resolved);
     if (indirection != null) context.out.writeln('  $indirection');
 
-    context.out.writeln('SDK: ${resolved.sdkDir.path}');
+    context.out.writeln('SDK: ${context.display(resolved.sdkDir.path)}');
     if (!resolved.isManaged) {
       context.out.writeln(
         'This SDK is not managed by dvm. Pin one for this directory with: '
@@ -58,20 +65,33 @@ class WhichCommand extends Command<int> {
 
   /// The whole point of the command: which of the five rules answered, said
   /// the way a person would say it.
-  String _explainRule(ResolvedSdk resolved) => switch (resolved.rule) {
-        ResolutionRule.environmentVariable =>
-          'Chosen by rule 1 of 5: ${VersionResolver.versionVariable} is set in '
-              'the environment, which overrides everything on disk.',
-        ResolutionRule.dvmrc =>
-          'Chosen by rule 2 of 5: pinned by ${resolved.source}.',
-        ResolutionRule.globalDefault =>
-          'Chosen by rule 3 of 5: no .dvmrc applies here, so the global '
-              'default in ${resolved.source} was used.',
-        ResolutionRule.pathFallback =>
-          'Chosen by rule 4 of 5: nothing pins a version here and no global '
-              'default is set, so this is the next dart on PATH, found in '
-              '${resolved.source}.',
-      };
+  String _explainRule(ResolvedSdk resolved) {
+    final source = _displaySource(resolved);
+    return switch (resolved.rule) {
+      ResolutionRule.environmentVariable =>
+        'Chosen by rule 1 of 5: ${VersionResolver.versionVariable} is set in '
+            'the environment, which overrides everything on disk.',
+      ResolutionRule.dvmrc => 'Chosen by rule 2 of 5: pinned by $source.',
+      ResolutionRule.globalDefault =>
+        'Chosen by rule 3 of 5: no .dvmrc applies here, so the global '
+            'default in $source was used.',
+      ResolutionRule.pathFallback =>
+        'Chosen by rule 4 of 5: nothing pins a version here and no global '
+            'default is set, so this is the next dart on PATH, found in '
+            '$source.',
+    };
+  }
+
+  /// Where the answer came from, formatted for a human.
+  ///
+  /// [ResolvedSdk.source] is nullable in general, but every rule that names it
+  /// above sets it. Falling back to a placeholder rather than `!` keeps a
+  /// later rule that forgets from crashing `which`, which is the command
+  /// people reach for precisely when something is already wrong.
+  String _displaySource(ResolvedSdk resolved) {
+    final source = resolved.source;
+    return source == null ? '(unknown)' : context.display(source);
+  }
 
   /// The hop from what was written down to what it turned out to mean.
   String? _explainIndirection(ResolvedSdk resolved) {
@@ -87,6 +107,6 @@ class WhichCommand extends Command<int> {
           '$version when it was last installed.';
     }
     return 'It says "$requested", an alias for $version in '
-        '${context.paths.configFile.path}.';
+        '${context.display(context.paths.configFile.path)}.';
   }
 }

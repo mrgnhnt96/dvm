@@ -32,10 +32,52 @@ void main() {
       harness.installVersion('3.9.0');
       await harness.run(['use', '3.9.0']);
 
-      expect(harness.output, contains('/project/.dvmrc'));
-      expect(harness.output, contains('commit this'));
+      expect(harness.output, contains('.dvmrc -> commit this'));
+      expect(harness.output, isNot(contains('/project/.dvmrc')));
       expect(harness.output, contains('.dvm/'));
       expect(harness.output, contains('--gitignore'));
+    });
+
+    test('names the files it touched relative to where the user is standing',
+        () async {
+      harness.installVersion('3.9.0');
+
+      expect(await harness.run(['use', '3.9.0']), 0);
+
+      // The user is in /project, so the prefix on every one of these is a
+      // directory they are already standing in. What is left is the signal:
+      // WHICH file.
+      expect(harness.output, contains('  .dvmrc -> commit this'));
+      expect(harness.output, contains('  .dvm/dart_sdk -> '));
+      expect(harness.output, contains('is not ignored yet by .gitignore'));
+
+      // The SDK store is not under the project, so it is untouched — and it
+      // needs no special case to stay that way.
+      expect(harness.output, contains('/dvm/versions/3.9.0'));
+
+      // The project directory IS the working directory, and prints in full:
+      // "Pinned Dart 3.9.0 for ." would name it worse than its own path does.
+      expect(harness.output, startsWith('Pinned Dart 3.9.0 for /project.'));
+    });
+
+    test('a path outside the working directory is left absolute', () async {
+      harness.installVersion('3.9.0');
+      harness.fileSystem.directory('/project/packages/app').createSync(
+            recursive: true,
+          );
+      harness.fileSystem.currentDirectory = '/project/packages/app';
+
+      // --here, so the pin lands in the working directory while the .gitignore
+      // notice and the shadowed ancestor sit outside it.
+      harness.fileSystem.file('/project/.dvmrc').writeAsStringSync('3.13.2');
+      harness.installVersion('3.13.2');
+
+      expect(await harness.run(['use', '3.9.0', '--here']), 0);
+
+      expect(harness.output, contains('.dvmrc -> commit this'));
+      expect(harness.output, contains('shadows /project/.dvmrc'),
+          reason: 'the ancestor is above the working directory, so the rule '
+              'leaves it absolute rather than making it ../..');
     });
 
     test('repinning moves the symlink instead of failing on it', () async {
@@ -118,10 +160,30 @@ void main() {
 
       await harness.run(['use', '3.9.0']);
 
+      // The regression guard for the nested case. The governing .dvmrc is
+      // ABOVE the working directory, so it is not under it and stays
+      // absolute — do not let anybody later "fix" this into `../../.dvmrc`,
+      // which is the one form that was explicitly declined.
       expect(harness.output, contains('/project/.dvmrc'));
+      expect(harness.output, isNot(contains('..')));
       expect(harness.output, contains('/project/packages/app'),
           reason: 'the user is standing three levels below the file that '
               'changed and must not have to guess');
+    });
+
+    test('the symlink beside that ancestor .dvmrc is absolute too', () async {
+      harness.installVersion('3.9.0');
+      nestedUnderPinnedRoot();
+
+      await harness.run(['use', '3.9.0']);
+
+      // One pin owns one symlink, and both live at /project — above where the
+      // user is standing, so neither goes relative.
+      expect(harness.output, contains('/project/.dvm/dart_sdk -> '));
+      expect(
+          harness.output,
+          contains('is not ignored yet by '
+              '/project/.gitignore'));
     });
 
     test('the symlink and the gitignore notice follow the .dvmrc', () async {

@@ -185,7 +185,7 @@ void main() {
       expect(await harness.run(['doctor']), 1);
       expect(
         harness.output,
-        contains('/project/.dvmrc pins Dart 3.9.0, which is not installed'),
+        contains('.dvmrc pins Dart 3.9.0, which is not installed'),
       );
     });
 

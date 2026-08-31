@@ -28,7 +28,8 @@ class ListCommand extends Command<int> {
     final versions = _installedVersions();
     if (versions.isEmpty) {
       context.out.writeln(
-        'No Dart SDKs are installed in ${context.paths.versionsDir.path}.\n'
+        'No Dart SDKs are installed in '
+        '${context.display(context.paths.versionsDir.path)}.\n'
         'Install one with: dvm install stable',
       );
       return 0;
@@ -41,7 +42,8 @@ class ListCommand extends Command<int> {
     final width = versions.map((v) => v.length).reduce((a, b) => a > b ? a : b);
 
     context.out
-      ..writeln('Installed Dart SDKs in ${context.paths.versionsDir.path}:')
+      ..writeln('Installed Dart SDKs in '
+          '${context.display(context.paths.versionsDir.path)}:')
       ..writeln();
 
     for (final version in versions) {
@@ -143,6 +145,8 @@ class ListCommand extends Command<int> {
     } on DvmException catch (error) {
       return _ProjectResolution(
         null,
+        // The working directory itself, so absolute by the display rule and
+        // by intent: the line says where "here" is.
         '* nothing: ${context.workingDirectory.path} does not resolve to an '
         'installed SDK.\n  ${error.message.split('\n').first}',
       );
@@ -152,7 +156,7 @@ class ListCommand extends Command<int> {
       return _ProjectResolution(
         null,
         '* none of these: ${context.workingDirectory.path} falls through to '
-        '${resolved.executable.path} on PATH (rule 4 of 5).',
+        '${context.display(resolved.executable.path)} on PATH (rule 4 of 5).',
       );
     }
 
@@ -165,9 +169,9 @@ class ListCommand extends Command<int> {
     final why = switch (resolved.rule) {
       ResolutionRule.environmentVariable =>
         'set by ${VersionResolver.versionVariable}',
-      ResolutionRule.dvmrc => 'pinned by ${resolved.source}',
+      ResolutionRule.dvmrc => 'pinned by ${_displaySource(resolved)}',
       ResolutionRule.globalDefault =>
-        'the global default in ${resolved.source}',
+        'the global default in ${_displaySource(resolved)}',
       ResolutionRule.pathFallback => 'found on PATH',
     };
     return _ProjectResolution(
@@ -175,6 +179,13 @@ class ListCommand extends Command<int> {
       '* = what ${context.workingDirectory.path} resolves to right now: '
       '$why$via.',
     );
+  }
+
+  /// Where the answer came from, formatted for a human. Mirrors
+  /// `WhichCommand`'s: nullable in general, set by every rule that names it.
+  String _displaySource(ResolvedSdk resolved) {
+    final source = resolved.source;
+    return source == null ? '(unknown)' : context.display(source);
   }
 }
 

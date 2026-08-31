@@ -88,7 +88,8 @@ class UnaliasCommand extends Command<int> {
     try {
       if (context.dvmrc.read(rcFile) == aliasName) {
         context.err.writeln(
-          '${rcFile.path} still pins "$aliasName". Run: dvm use <version>',
+          '${context.display(rcFile.path)} still pins "$aliasName". '
+          'Run: dvm use <version>',
         );
       }
     } on Object {
