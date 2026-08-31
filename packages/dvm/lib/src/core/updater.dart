@@ -16,46 +16,6 @@ import 'platform.dart';
 /// The GitHub repository dvm publishes its own releases from.
 const String releaseRepository = 'mrgnhnt96/dvm';
 
-/// The rolling prerelease tag `.github/workflows/alpha.yml` publishes `main`
-/// under. One tag, deleted and recreated on every push, so it always names the
-/// newest commit and never names an older one — see that file's header for why
-/// it is not a tag per commit.
-const String alphaReleaseTag = 'alpha';
-
-/// The build-metadata prefix `tool/stamp_build_tag.sh` stamps an alpha with:
-/// `alpha.g<short sha>`, which `buildVersion` turns into the `+alpha.g1a2b3c4`
-/// a user sees in `dvm --version`.
-const String alphaBuildTagPrefix = 'alpha.g';
-
-/// A git object name, abbreviated or whole. Seven is what `git rev-parse
-/// --short=7` produces and what alpha.yml stamps; anything shorter is a
-/// collision waiting to be mistaken for an identity.
-final RegExp _commitPattern = RegExp(r'^[0-9a-f]{7,40}$');
-
-/// Whether [a] and [b] name the same commit, either of them abbreviated.
-///
-/// A git abbreviation is a prefix of the whole sha, so a prefix match in either
-/// direction is the whole comparison. **This, and not a version comparison, is
-/// how the alpha channel decides whether there is anything to install** — see
-/// [Updater.currentCommit].
-///
-/// Anything that is not a plausible object name answers false. Two unknowns are
-/// not evidence of sameness, and "could not tell" must not read as "up to date".
-bool sameCommit(String a, String b) {
-  final left = a.toLowerCase();
-  final right = b.toLowerCase();
-  if (!_commitPattern.hasMatch(left) || !_commitPattern.hasMatch(right)) {
-    return false;
-  }
-  return left.length < right.length
-      ? right.startsWith(left)
-      : left.startsWith(right);
-}
-
-/// [commit] abbreviated the way alpha.yml names it, for output.
-String shortCommit(String commit) =>
-    commit.length <= 7 ? commit : commit.substring(0, 7);
-
 /// The name of the release asset carrying the binary for [platform].
 ///
 /// **THIS IS A CONTRACT, NOT A DETAIL.** Three places construct this name and
@@ -108,40 +68,16 @@ class DvmRelease {
     required this.tag,
     required this.version,
     required this.assets,
-    this.isPrerelease = false,
-    this.commit,
   });
 
-  /// The git tag, e.g. `v0.2.0` — or [alphaReleaseTag], which is not a version
-  /// at all.
+  /// The git tag, e.g. `v0.2.0`.
   final String tag;
 
-  /// [tag] without its leading `v`, e.g. `0.2.0`. For a tag that is not a
-  /// version this is the tag itself, so the alpha's is `alpha`.
+  /// [tag] without its leading `v`, e.g. `0.2.0`.
   final String version;
 
   /// Asset name -> where to download it from.
   final Map<String, Uri> assets;
-
-  /// Whether GitHub flags this as a prerelease. The stable channel never
-  /// resolves to one and the alpha channel resolves to nothing else.
-  final bool isPrerelease;
-
-  /// The commit this release was built from, when it names one, lower-cased
-  /// and possibly abbreviated. Null when nothing in the API response says.
-  ///
-  /// This is the alpha channel's whole basis for "is there something newer?" —
-  /// see [Updater.currentCommit] for why a version comparison cannot be.
-  final String? commit;
-
-  /// How this release is named in output: a version for a release, and the tag
-  /// plus its commit for the rolling alpha, whose tag is not a version and
-  /// whose only identity is the commit it was built from.
-  String get label {
-    final at = commit;
-    if (at == null || version != alphaReleaseTag) return version;
-    return '$version (${shortCommit(at)})';
-  }
 
   /// The download URL for [name], or null if this release does not carry it.
   Uri? assetUrl(String name) => assets[name];
@@ -157,36 +93,6 @@ enum UpdateStatus {
 
   /// The binary on disk was replaced.
   installed,
-
-  /// Running an alpha that no stable release is ahead of, so a bare
-  /// `dvm update` has nowhere to go that is not a downgrade. Nothing was
-  /// touched, and the caller names the two ways out.
-  ///
-  /// This is the case a plain update used to report as "already up to date":
-  /// an alpha's version IS the release it was cut from, so the two compare
-  /// equal while the codebases are dozens of commits apart.
-  alphaAheadOfStable,
-}
-
-/// Which published dvm an update run is asking for.
-///
-/// Per invocation and never persisted. A stored channel would silently change
-/// what a later bare `dvm update` does, months after anyone remembers setting
-/// it; `dvm --version` and `dvm doctor` say which build is running instead.
-enum UpdateChannel {
-  /// Whatever is newest and is a step forward — a bare `dvm update`. It never
-  /// moves backwards, and it never leaves the alpha channel on its own for a
-  /// release that is not actually ahead.
-  newest,
-
-  /// The newest stable release, taken even when it is not a step forward —
-  /// `--stable`, and the only way off an alpha. An alpha's version compares
-  /// EQUAL to the release it was cut from, so nothing that asks "is the
-  /// release newer?" can ever move it.
-  stable,
-
-  /// The newest published prerelease — `--alpha`, the rolling latest `main`.
-  alpha,
 }
 
 /// What [Updater.update] did.
@@ -197,11 +103,10 @@ class UpdateOutcome {
     required this.status,
   });
 
-  /// The version that was running, as the binary REPORTS it — so an alpha's
-  /// `+alpha.g<sha>` is in here rather than the bare version it was cut from.
+  /// The version that was running.
   final String from;
 
-  /// What was resolved: a version, or `alpha (<sha>)` for the rolling alpha.
+  /// The version that was resolved.
   final String to;
 
   final UpdateStatus status;
@@ -226,7 +131,6 @@ class Updater {
     required Map<String, String> environment,
     this.isCompiled = kIsCompiled,
     this.currentVersion = kVersion,
-    this.currentBuildTag = kBuildTag,
     http.Client? httpClient,
     Uri? apiBase,
     ModeApplier? modeApplier,
@@ -249,38 +153,6 @@ class Updater {
 
   /// The version this build reports, normally [kVersion].
   final String currentVersion;
-
-  /// What this build is beyond its version, normally [kBuildTag]. Empty for
-  /// every ordinary build; `alpha.g<short sha>` for one built by alpha.yml.
-  final String currentBuildTag;
-
-  /// The version this build reports on the command line, build tag included.
-  ///
-  /// The `from` of every [UpdateOutcome], because the bare [currentVersion] of
-  /// an alpha is the release it was cut from and printing that would hide the
-  /// fact that an alpha was replaced at all.
-  String get reportedVersion => buildVersion(currentVersion, currentBuildTag);
-
-  /// The commit this build was made from, or null when it is not an alpha.
-  ///
-  /// **THE ALPHA CHANNEL'S ORDERING PROBLEM, AND WHY THIS EXISTS.** An alpha
-  /// reports `<version>+alpha.g<sha>`, and semver ignores build metadata for
-  /// precedence: `0.1.0+alpha.gc0687e6` and `0.1.0+alpha.g0ad7aad` compare
-  /// EQUAL to each other and to the `0.1.0` they were both cut from, however
-  /// many commits apart they are. So `--alpha` cannot ask "is the published
-  /// one greater than mine?" — the answer is no, forever, and the run reports
-  /// "up to date" while doing nothing.
-  ///
-  /// It asks an IDENTITY question instead: is the published alpha a DIFFERENT
-  /// commit from the one I was built from? Both sides carry that: this side in
-  /// the build tag `tool/stamp_build_tag.sh` stamped, and the published side in
-  /// [DvmRelease.commit]. [sameCommit] compares them.
-  String? get currentCommit => currentBuildTag.startsWith(alphaBuildTagPrefix)
-      ? currentBuildTag.substring(alphaBuildTagPrefix.length).toLowerCase()
-      : null;
-
-  /// Whether this build came from the alpha channel rather than a release.
-  bool get isAlphaBuild => currentCommit != null;
 
   final HostPlatform Function() _hostPlatform;
   final Map<String, String> _environment;
@@ -326,56 +198,6 @@ class Updater {
     );
   }
 
-  /// The newest published PRERELEASE carrying this platform's asset.
-  ///
-  /// A SECOND PATH, NOT A WIDER FIRST ONE. [latestRelease] drops the alpha
-  /// twice over — once on the `prerelease` flag and once because the tag is
-  /// `alpha` rather than `v<x>.<y>.<z>` — and neither filter is relaxed by this
-  /// existing. They are inverted here, for this path only, so the stable
-  /// channel stays structurally unable to wander onto unreleased code.
-  ///
-  /// A WHITELIST WITH NO FALLBACK, exactly as `install.sh`'s `pick_tag` does
-  /// it: when there is no prerelease this throws rather than handing back the
-  /// newest release. `--alpha` asks for `main`, and installing something else
-  /// underneath a success message answers a different question.
-  Future<DvmRelease> latestAlphaRelease() async {
-    final assetName = releaseAssetName(_hostPlatform());
-    final body = await _getJson(_apiBase.resolve('releases?per_page=100'));
-    if (body is! List) {
-      throw const UpdateException(
-        'GitHub did not return a list of releases for dvm.',
-      );
-    }
-
-    for (final entry in body) {
-      if (entry is! Map<String, Object?>) continue;
-      // Spelled out here rather than folded into a flag on [_parseRelease]:
-      // this pair of lines is the whitelist, and it is what makes an `--alpha`
-      // run unable to resolve to a release. A draft is nobody's release.
-      if (entry['draft'] == true) continue;
-      if (entry['prerelease'] != true) continue;
-
-      final release = _parseRelease(
-        entry,
-        allowPrerelease: true,
-        requireVersionTag: false,
-      );
-      if (release == null) continue;
-      if (release.assetUrl(assetName) == null) continue;
-      return release;
-    }
-
-    throw UpdateException(
-      'No published dvm PRERELEASE carries a $assetName, and --alpha installs '
-      'nothing else.\n'
-      'The newest stable release was deliberately NOT taken in its place: '
-      '--alpha asks for the latest main. Run `dvm update` for a release.\n'
-      'Check https://github.com/$releaseRepository/releases — if prereleases '
-      'are listed there, this is usually the API rate limit; set GITHUB_TOKEN '
-      'and try again.',
-    );
-  }
-
   /// The release tagged `v[version]`, whatever its position in the list.
   Future<DvmRelease> releaseForVersion(String version) async {
     final tag = version.startsWith('v') ? version : 'v$version';
@@ -407,13 +229,11 @@ class Updater {
   /// With [check] the release is only resolved and reported — nothing is
   /// downloaded and nothing on disk is touched. [version] pins an explicit
   /// release instead of taking the newest one, which is how a user gets back
-  /// off a bad release. [channel] chooses which published thing is newest; see
-  /// [UpdateChannel].
+  /// off a bad release.
   Future<UpdateOutcome> update({
     required String executablePath,
     String? version,
     bool check = false,
-    UpdateChannel channel = UpdateChannel.newest,
   }) async {
     if (!isCompiled) {
       throw const UpdateException(
@@ -422,64 +242,22 @@ class Updater {
       );
     }
 
-    // REFUSED RATHER THAN RANKED, the way install.sh refuses `--alpha` with
-    // DVM_VERSION: honouring one and dropping the other is a coin toss between
-    // two different installs, and whichever way it lands the user is told the
-    // update succeeded. `dvm update --stable 0.1.4` is NOT this case — both of
-    // those name a stable release and they agree.
-    if (channel == UpdateChannel.alpha && version != null) {
-      throw UpdateException(
-        '--alpha and an explicit version ask for two different things.\n'
-        '  $version names one exact release tag.\n'
-        '  --alpha asks for whichever prerelease is newest, which is the '
-        'rolling `$alphaReleaseTag` tag and never a version.\n'
-        'Nothing was installed. Drop one of them:\n'
-        '  the newest alpha:  dvm update --alpha\n'
-        '  exactly $version:  dvm update $version',
-      );
-    }
-
-    if (channel == UpdateChannel.alpha) {
-      return _updateToAlpha(executablePath: executablePath, check: check);
-    }
-
     final release = version == null
         ? await latestRelease()
         : await releaseForVersion(version);
 
-    // AN ALPHA CANNOT BE LEFT BY ACCIDENT. Its version IS the release it was
-    // cut from, so on a bare `dvm update` the equality below would read as
-    // "already up to date" (the old behaviour, which stranded the user) and
-    // anything looser would silently replace unreleased work with an older
-    // codebase. Only a release that is genuinely AHEAD is a step forward; when
-    // it is not, nothing is touched and the caller names the two ways out.
-    if (isAlphaBuild &&
-        version == null &&
-        channel == UpdateChannel.newest &&
-        !isNewerThanCurrent(release.version)) {
-      return UpdateOutcome(
-        from: reportedVersion,
-        to: release.version,
-        status: UpdateStatus.alphaAheadOfStable,
-      );
-    }
-
     // An explicit version is allowed to go backwards; the automatic path is
     // not. Someone typing `dvm update 0.1.4` after a bad 0.1.5 means it.
-    //
-    // Against [reportedVersion], not [currentVersion]: `0.1.0` and
-    // `0.1.0+alpha.g0ad7aad` are different builds, and a `--stable` run from
-    // the second to the first is a real install rather than a no-op.
-    if (release.version == reportedVersion) {
+    if (release.version == currentVersion) {
       return UpdateOutcome(
-        from: reportedVersion,
+        from: currentVersion,
         to: release.version,
         status: UpdateStatus.upToDate,
       );
     }
     if (check) {
       return UpdateOutcome(
-        from: reportedVersion,
+        from: currentVersion,
         to: release.version,
         status: UpdateStatus.available,
       );
@@ -488,60 +266,14 @@ class Updater {
     await _installRelease(release: release, executablePath: executablePath);
 
     return UpdateOutcome(
-      from: reportedVersion,
+      from: currentVersion,
       to: release.version,
       status: UpdateStatus.installed,
     );
   }
 
-  /// The `--alpha` half of [update]: move to the newest published alpha.
-  ///
-  /// The decision here is an IDENTITY comparison and deliberately not a version
-  /// one — [currentCommit] says why at length. In short: every alpha of a given
-  /// release compares semver-EQUAL to every other, so "is the published one
-  /// newer?" answers no forever.
-  Future<UpdateOutcome> _updateToAlpha({
-    required String executablePath,
-    required bool check,
-  }) async {
-    final release = await latestAlphaRelease();
-    final running = currentCommit;
-    final published = release.commit;
-
-    // Both sides have to be known. A published alpha that names no commit, or
-    // a build with no alpha stamp on it, is a "could not tell" — and reporting
-    // that as "up to date" is exactly the failure this channel exists to fix,
-    // so it falls through and installs.
-    if (running != null &&
-        published != null &&
-        sameCommit(running, published)) {
-      return UpdateOutcome(
-        from: reportedVersion,
-        to: release.label,
-        status: UpdateStatus.upToDate,
-      );
-    }
-
-    if (check) {
-      return UpdateOutcome(
-        from: reportedVersion,
-        to: release.label,
-        status: UpdateStatus.available,
-      );
-    }
-
-    await _installRelease(release: release, executablePath: executablePath);
-
-    return UpdateOutcome(
-      from: reportedVersion,
-      to: release.label,
-      status: UpdateStatus.installed,
-    );
-  }
-
   /// Downloads [release]'s asset for this platform, verifies its published
-  /// sha256, and puts it in place. Shared by both channels: an alpha is
-  /// packaged by the same script as a release and is installed no differently.
+  /// sha256, and puts it in place.
   Future<void> _installRelease({
     required DvmRelease release,
     required String executablePath,
@@ -782,26 +514,16 @@ class Updater {
   }
 
   /// A release object from the API, or null when it is not a dvm CLI release.
-  ///
-  /// [requireVersionTag] is the second of the two filters the stable channel
-  /// relies on, and it stays on by default: a release scan that accepted any
-  /// tag would resolve to the rolling `alpha`. Only [latestAlphaRelease] turns
-  /// it off, because the alpha's tag is a channel name and not a version.
-  DvmRelease? _parseRelease(
-    Object? entry, {
-    bool allowPrerelease = false,
-    bool requireVersionTag = true,
-  }) {
+  DvmRelease? _parseRelease(Object? entry, {bool allowPrerelease = false}) {
     if (entry is! Map<String, Object?>) return null;
-    final isPrerelease = entry['prerelease'] == true;
-    if (!allowPrerelease && (entry['draft'] == true || isPrerelease)) {
+    if (!allowPrerelease &&
+        (entry['draft'] == true || entry['prerelease'] == true)) {
       return null;
     }
 
     final tag = entry['tag_name'];
     if (tag is! String) return null;
-    final isVersionTag = RegExp(r'^v\d+\.\d+\.\d+').hasMatch(tag);
-    if (requireVersionTag && !isVersionTag) return null;
+    if (!RegExp(r'^v\d+\.\d+\.\d+').hasMatch(tag)) return null;
 
     final assets = <String, Uri>{};
     final listed = entry['assets'];
@@ -817,42 +539,9 @@ class Updater {
 
     return DvmRelease(
       tag: tag,
-      // A tag that is not a version is its own name: the alpha's `version` is
-      // `alpha`. Stripping a leading `v` unconditionally would make it `lpha`.
-      version: isVersionTag ? tag.substring(1) : tag,
+      version: tag.substring(1),
       assets: assets,
-      isPrerelease: isPrerelease,
-      commit: _commitOf(entry),
     );
-  }
-
-  /// The commit a release names, or null when nothing in it does.
-  ///
-  /// `target_commitish` FIRST, because for the rolling alpha it is the real
-  /// thing: alpha.yml deletes the old tag and recreates the release with
-  /// `--target "${GITHUB_SHA}"`, so GitHub stores and returns the full 40-hex
-  /// sha of the commit that was actually built. Verified against the live
-  /// `alpha` release, which returns
-  /// `0ad7aad29d7ded5c35383f58fea42d637fad39d4`.
-  ///
-  /// It is only believed when it LOOKS like an object name, because that field
-  /// is not always one: for a release created against an existing tag GitHub
-  /// returns the branch, and `main` is not a commit. The release TITLE is the
-  /// fallback — alpha.yml writes it as `dvm alpha (<short sha>)` — so the
-  /// answer survives a change in how the release is cut.
-  static String? _commitOf(Map<String, Object?> entry) {
-    final target = entry['target_commitish'];
-    if (target is String && _commitPattern.hasMatch(target.toLowerCase())) {
-      return target.toLowerCase();
-    }
-
-    final title = entry['name'];
-    if (title is String) {
-      final match = RegExp(r'\(([0-9a-fA-F]{7,40})\)').firstMatch(title);
-      if (match != null) return match.group(1)!.toLowerCase();
-    }
-
-    return null;
   }
 }
 

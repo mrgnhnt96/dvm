@@ -183,44 +183,23 @@ class DoctorCommand extends Command<int> {
 
   String _count(int n, String noun) => '$n $noun${n == 1 ? '' : 's'}';
 
-  /// Which dvm is this — a release, an alpha, or a checkout?
+  /// Which dvm is this — a published release, or a checkout?
   ///
-  /// FIRST, AND HERE AT ALL, because this is where someone looks when confused
-  /// and an alpha is a thing whose consequences arrive later: it is unreleased
-  /// code, and no plain `dvm update` moves off it on its own (that would be
-  /// swapping in an older codebase without being asked). `dvm --version`
-  /// carries the same fact in its `+alpha.g<sha>` suffix, but only for someone
-  /// who already knows to read it that way.
+  /// FIRST, because this is where someone looks when confused, and "am I even
+  /// running the dvm I think I am?" is the question underneath most of the
+  /// others. A binary installed from a release and a `dart run` of a working
+  /// tree behave differently — only the first can replace itself — and nothing
+  /// else in the report says which one is speaking.
   DoctorFinding _checkBuild() {
     final updater = context.updater;
-    final reported = updater.reportedVersion;
-
-    if (updater.currentCommit case final commit?) {
-      return DoctorFinding(
-        severity: DoctorSeverity.warn,
-        area: 'build',
-        summary: 'dvm $reported is an ALPHA build, from commit $commit — the '
-            'latest main at the time it was installed, not a release.',
-        details: const [
-          'Nobody chose to publish this code; a push to main did.',
-          'A plain `dvm update` never brings you an alpha, and moves you off '
-              'this one only for a release that is genuinely ahead of it.',
-          'For a fresher alpha: dvm update --alpha',
-        ],
-        remedy: const DoctorRemedy(
-          'Back to the newest release: ',
-          'dvm update --stable',
-        ),
-      );
-    }
 
     return DoctorFinding(
       severity: DoctorSeverity.ok,
       area: 'build',
       summary: updater.isCompiled
-          ? 'dvm $reported, a published release.'
-          : 'dvm $reported, running from source rather than an installed '
-              'binary.',
+          ? 'dvm ${updater.currentVersion}, a published release.'
+          : 'dvm ${updater.currentVersion}, running from source rather than '
+              'an installed binary.',
     );
   }
 

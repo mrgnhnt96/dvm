@@ -28,9 +28,6 @@ class FakeGitHubServer {
   /// Every path this server was asked for, in order.
   final List<String> requests = [];
 
-  /// The `Authorization` header of every request, null where there was none.
-  final List<String?> authorizations = [];
-
   /// When set, every request gets this status instead of an answer.
   int? failWith;
 
@@ -42,27 +39,17 @@ class FakeGitHubServer {
 
   /// Publishes a release. Assets are `name -> bytes`; a `.sha256` sibling is
   /// generated for each one unless the test supplies its own.
-  ///
-  /// [commit] and [title] model what the rolling alpha carries: alpha.yml
-  /// creates it with `--target "${GITHUB_SHA}"` and titles it
-  /// `dvm alpha (<short sha>)`, which is where the alpha channel reads the
-  /// published commit from. Both are omitted from the JSON when null, so an
-  /// ordinary release looks exactly as it did.
   FakeRelease publish({
     required String tag,
     Map<String, Uint8List> assets = const {},
     bool draft = false,
     bool prerelease = false,
-    String? commit,
-    String? title,
   }) {
     final release = FakeRelease(
       tag: tag,
       draft: draft,
       prerelease: prerelease,
       assets: {...assets},
-      commit: commit,
-      title: title,
     );
     for (final entry in assets.entries) {
       release.assets['${entry.key}.sha256'] = Uint8List.fromList(
@@ -75,7 +62,6 @@ class FakeGitHubServer {
 
   Future<void> _handle(HttpRequest request) async {
     requests.add(request.uri.toString());
-    authorizations.add(request.headers.value(HttpHeaders.authorizationHeader));
     final response = request.response;
 
     final failure = failWith;
@@ -141,19 +127,11 @@ class FakeRelease {
     required this.draft,
     required this.prerelease,
     required this.assets,
-    this.commit,
-    this.title,
   });
 
   final String tag;
   final bool draft;
   final bool prerelease;
-
-  /// What GitHub returns in `target_commitish`.
-  final String? commit;
-
-  /// The release title, GitHub's `name`.
-  final String? title;
 
   /// Asset name -> the bytes served for it.
   final Map<String, Uint8List> assets;
@@ -166,8 +144,6 @@ class FakeRelease {
         'tag_name': tag,
         'draft': draft,
         'prerelease': prerelease,
-        if (commit != null) 'target_commitish': commit,
-        if (title != null) 'name': title,
         'assets': [
           for (final name in assets.keys)
             if (!hidden.contains(name))

@@ -45,8 +45,7 @@ void main() {
     // reviewable and the "before" is still a before. Re-running the generator
     // against current code would turn it into a snapshot of whatever the code
     // does today and quietly launder a colour bug into the expectation. The
-    // `ok build:` line each `dvm doctor` block opens with was added that way,
-    // by `dvm update --alpha`.
+    // `ok build:` line each `dvm doctor` block opens with was added that way.
     test('a non-terminal sink, which is what a pipe and a CI log are',
         () async {
       expect(await renderColorScenarios(), _golden());
