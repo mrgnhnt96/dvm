@@ -14,6 +14,19 @@ name: Alpha
 # release scan drops this one twice over — once on the flag, and once because
 # the tag does not match `^v\d+\.\d+\.\d+`.
 #
+# `dvm update --alpha` reaches it by INVERTING both of those in a second scan of
+# its own (`Updater.latestAlphaRelease`), never by relaxing the first one, so the
+# guarantee above is unchanged: no stable path can resolve to this release.
+#
+# THE TITLE AND THE TARGET ARE READ BY THAT PATH, so neither is decoration. An
+# alpha's version is the version it was cut from, and semver ignores build
+# metadata — so `--alpha` cannot ask "is the published one newer?" and asks "is
+# it a different COMMIT?" instead. It reads that commit from `target_commitish`
+# (which is why the release is recreated with `--target "${GITHUB_SHA}"` rather
+# than left pointing at a branch) and falls back to the `dvm alpha (<sha>)`
+# title. Publishing this release without either would make every `--alpha` run
+# reinstall the same build.
+#
 # ONE ROLLING TAG, `alpha`, RATHER THAN A TAG PER COMMIT — and that is a
 # correctness requirement, not tidiness. install.sh fetches
 # `/releases?per_page=100` and filters inside that one page: once ~100 alpha
@@ -295,9 +308,10 @@ jobs:
           This tag is **rolling**: it is deleted and recreated on every push to \`main\`, so it
           always names the newest commit and never names this one for long.
 
-          \`dvm update\` will not bring you another alpha — it only ever installs stable releases —
-          so re-run the command above for a fresher one, or run the installer without \`--alpha\`
-          to go back to a supported build.
+          Moving around from here does not need the installer: \`dvm update --alpha\` takes the
+          newest alpha, \`dvm update --stable\` goes back to the newest release. A bare
+          \`dvm update\` still only ever installs stable releases, and will not swap this build
+          for one that is not actually ahead of it.
           NOTES
           cat alpha-notes.md
 
@@ -356,6 +370,22 @@ jobs:
             exit 1
           fi
 
+          # THE THIRD THING, and it is what `dvm update --alpha` decides on.
+          # That path compares COMMITS, not versions (every alpha of a release
+          # is semver-equal to it), and reads the published one from here. A
+          # release left pointing at a branch would make every `--alpha` run
+          # reinstall the build the user already has, silently and forever.
+          target="$(gh release view alpha --repo "${GITHUB_REPOSITORY}" \
+            --json targetCommitish --jq '.targetCommitish')"
+          if ! printf '%s' "${target}" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::the alpha's target_commitish is [${target}], not a commit sha; dvm update --alpha could not tell one alpha from another"
+            exit 1
+          fi
+          if [ "${target}" != "${GITHUB_SHA}" ]; then
+            echo "::error::the alpha names commit ${target} but was built from ${GITHUB_SHA}"
+            exit 1
+          fi
+
           published="$(gh release view alpha --repo "${GITHUB_REPOSITORY}" \
             --json assets --jq '.assets[].name')"
           missing=0
@@ -368,7 +398,7 @@ jobs:
             done
           done
           [ "${missing}" -eq 0 ] || exit 1
-          echo "All 10 assets are present on the alpha, and it is flagged prerelease."
+          echo "All 10 assets are present, it is flagged prerelease, and it names ${target}."
 
           {
             echo "### Published"

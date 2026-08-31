@@ -51,9 +51,12 @@ and the wrong thing to run otherwise. An alpha reports itself with a build-tag
 suffix — `dvm --version` prints something like `dvm 0.2.0+alpha.g1a2b3c4` — so
 you can tell later what you are running.
 
-`dvm update` only ever installs stable releases, so it will not bring you a newer
-alpha: re-run the command above for that. A plain install can never resolve to an
-alpha, with or without this flag.
+Once you are on an alpha you do not need the installer again. `dvm update --alpha`
+moves you to the newest one, and `dvm update --stable` takes you back to the newest
+release. Both flags are per-invocation and remember nothing: a bare `dvm update`
+still means "the newest release", and it will not silently swap an alpha for a
+release that is not actually ahead of it — it says so and names both flags instead.
+A plain install can never resolve to an alpha, with or without `--alpha`.
 
 ## Pin a project
 

@@ -23,6 +23,15 @@ void main() {
     // by `tool/generate_golden.dart` running against the commit before any
     // styling existed — it is a real BEFORE, not a snapshot of the code it is
     // checking.
+    //
+    // KEEP IT THAT WAY. A later change that legitimately adds or removes a line
+    // of OUTPUT edits the golden by hand, applying exactly the lines it adds
+    // and leaving every other byte alone, so the diff on this file is
+    // reviewable and the "before" is still a before. Re-running the generator
+    // against current code would turn it into a snapshot of whatever the code
+    // does today and quietly launder a colour bug into the expectation. The
+    // `ok build:` line each `dvm doctor` block opens with was added that way,
+    // by `dvm update --alpha`.
     test('a non-terminal sink, which is what a pipe and a CI log are',
         () async {
       expect(await renderColorScenarios(), _golden());
