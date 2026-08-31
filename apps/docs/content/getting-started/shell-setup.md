@@ -35,9 +35,14 @@ dvm setup
 Wrote /Users/you/.dvm/shims/dart
   -> /Users/you/.dvm/bin/dvm exec dart
 
-Add this to ~/.zshrc:
+Add this line to /Users/you/.zshrc (/bin/zsh):
 
   export PATH="/Users/you/.dvm/shims:$PATH"
+
+It has to go ahead of anything else that puts a dart on PATH, and it only takes effect in shells started after you save the file.
+
+Or let dvm add it for you: dvm setup --write-path-line
+It backs /Users/you/.zshrc up before touching it, and dvm setup --remove-path-line takes the line back out.
 
 Then check it with: dvm doctor
 ```
@@ -48,14 +53,29 @@ Then check it with: dvm doctor
 
 `dvm setup` reads `$SHELL` to work out which line to hand you and where it goes:
 
-| Shell | Where the line goes |
+| Shell | The file dvm names |
 | --- | --- |
 | zsh (macOS default) | `~/.zshrc` |
-| bash | `~/.bashrc`, or `~/.bash_profile` on macOS |
+| bash | `~/.bashrc` |
 | fish | `~/.config/fish/config.fish`, with `fish_add_path` |
 | PowerShell | your user environment — see [On Windows](#on-windows) below |
 
+dvm names **one** file per shell, and for bash that is always `~/.bashrc`. If yours is a macOS bash login shell — which reads `~/.bash_profile` and not `~/.bashrc` — put the line where your shell actually reads it, and be aware that `--write-path-line` writes to `~/.bashrc` rather than working that out for you.
+
 Then start a **new** shell. The file is read when a shell starts, so the one you are in keeps the environment it was given.
+
+## `dvm setup` prints; `dvm setup --write-path-line` writes
+
+The difference is the single most common reason a correct install still resolves the wrong `dart`, so it is worth stating flatly:
+
+| Command | Writes the shim | Adds the line to your startup file |
+| --- | --- | --- |
+| `dvm setup` | yes | **no** — it prints the line for you to add |
+| `dvm setup --write-path-line` | yes | yes |
+
+Plain `dvm setup` **writes the shim and prints the line**. It does not edit anything. If you run it, read the output as confirmation, and open a new terminal, nothing about your `PATH` has changed and `dart` still resolves to whatever it resolved to before. The shim is there and correct; it is simply not on `PATH`.
+
+That is not a failure state you have to guess at — `dvm doctor` says it outright, and the section below shows exactly what it prints.
 
 ## Letting dvm add the line
 
@@ -116,13 +136,120 @@ Git Bash and MSYS set `$SHELL`, so dvm gives them the POSIX `export` line and th
 
 `PATH` is searched left to right and the first match wins, so `~/.dvm/shims` belongs **ahead of** every other directory that supplies a `dart`.
 
-That position is the whole of it. If Homebrew's `dart`, or a Flutter SDK's bundled `dart`, or `/usr/local/bin/dart` appears earlier in the list, that binary is found first and the shim is never reached. Your pins do nothing, and there is no error message — the symptom is `dart --version` reporting a version you did not ask for, with everything else apparently correct.
+That position is the whole of it. If another directory holding a `dart` appears earlier in the list, that binary is found first and the shim is never reached. Your pins do nothing, and there is no error message — the symptom is `dart --version` reporting a version you did not ask for, with everything else apparently correct.
 
-[`dvm doctor`](/commands/doctor) checks exactly this, and reports the offending entry by path:
+### What else on your machine provides a `dart`
+
+More than people expect. These are the common ones, and the first four are all things a Dart or Flutter developer plausibly installed on purpose:
+
+| Directory | Where it comes from |
+| --- | --- |
+| `~/fvm/default/bin` | [fvm](https://fvm.app), the Flutter version manager — its default SDK ships a `dart` |
+| `<flutter>/bin/cache/dart-sdk/bin` | any Flutter SDK checkout; Flutter bundles its own Dart |
+| `~/.asdf/shims` | asdf, if you have ever added a Dart or Flutter plugin |
+| `/opt/homebrew/bin`, `/usr/local/bin` | `brew install dart`, or a symlink somebody made years ago |
+| `~/.local/bin` | a hand-unzipped SDK, or a `dart` copied there |
+
+You do not have to guess which of these you have. `dvm doctor` enumerates them.
+
+### What it looks like when it goes wrong
+
+This is the case that prompted this section: dvm installed correctly, `dvm setup` run, the shim written and valid — and `dart` still answering from fvm, because plain `dvm setup` prints the `PATH` line rather than adding it.
+
+```sh
+which dart
+```
+
+```text
+/Users/you/fvm/default/bin/dart
+```
 
 ```sh
 dvm doctor
 ```
+
+```text
+dvm doctor
+  FAIL  PATH: /Users/you/.dvm/shims is not on PATH, so `dart` does not go through dvm.
+          PATH order (entries that provide a dart):
+            1. /Users/you/fvm/default/bin
+          -> Add it to your shell startup file: export PATH="/Users/you/.dvm/shims:$PATH"
+  ok    shims: /Users/you/.dvm/shims/dart runs /Users/you/.dvm/bin/dvm.
+  ok    shell: no shell function or alias named `dvm` in your startup files.
+
+1 problem, 0 warnings.
+```
+
+Read the `ok` lines as carefully as the `FAIL`. The shim exists and points at a real dvm; nothing is broken or half-installed. The one missing thing is the `PATH` entry, and `--write-path-line` is what adds it:
+
+```sh
+dvm setup --write-path-line
+```
+
+The near neighbour of this is the shims directory being on `PATH` but *behind* something:
+
+```text
+dvm doctor
+  FAIL  PATH: /Users/you/.dvm/shims is on PATH but an entry ahead of it provides a dart, so the shim is never reached.
+          PATH order (entries that provide a dart):
+            2. /Users/you/.dvm/shims  <- dvm shims
+            1. /Users/you/fvm/default/bin
+          -> Put the shims first: export PATH="/Users/you/.dvm/shims:$PATH"
+```
+
+The numbers are positions in `PATH`, not the order of the lines: dvm lists its own entry first so you can see where it landed, then everything that beats it. Here the shims are second and fvm is first, so fvm wins.
+
+## Where in the *file* the line goes
+
+`PATH` order is decided by your startup file, and a startup file is read top to bottom. So the position of the line within the file matters just as much as the position of the directory within `PATH` — and there is one shape that quietly discards everything above it.
+
+Compare these two lines:
+
+```sh
+export PATH="$HOME/.dvm/shims:$PATH"   # RELATIVE — prepends, keeps what PATH held
+export PATH=/a:/b:/c                   # ABSOLUTE — replaces PATH entirely
+```
+
+The second has no `$PATH` on the right-hand side. It does not add to `PATH`, it **sets** it, throwing away everything `PATH` held at that point. Plenty of real `.zshrc` files end with one, often written years ago or generated by an installer.
+
+If dvm's line is above it, the absolute assignment wipes it out:
+
+```sh
+# ~/.zshrc — BROKEN
+export PATH="$HOME/.dvm/shims:$PATH"
+export PATH=$HOME/fvm/default/bin:/usr/local/bin:/usr/bin:/bin
+```
+
+```text
+which dart -> /Users/you/fvm/default/bin/dart
+```
+
+The symptom is maddening precisely because the file *visibly contains the correct line*. You added it, you started a new shell, and `dart` is still wrong.
+
+Moving dvm's line below fixes it:
+
+```sh
+# ~/.zshrc — WORKS
+export PATH=$HOME/fvm/default/bin:/usr/local/bin:/usr/bin:/bin
+export PATH="$HOME/.dvm/shims:$PATH"
+```
+
+```text
+which dart -> /Users/you/.dvm/shims/dart
+```
+
+`dvm setup --write-path-line` **appends its block to the end of the file**, so it lands after an absolute assignment that is currently last, and it works. Do not read that as a guarantee: it is a consequence of the block going last, not of dvm understanding your file. If some other tool later regenerates its absolute `PATH` line at the end of your startup file, that line moves below dvm's block and `dart` stops resolving through dvm with nothing in dvm having changed. If that happens, `dvm doctor` reports it the same way as any other ordering problem.
+
+## Running dvm and fvm on the same machine
+
+You do not have to choose. They manage different things — fvm manages **Flutter** SDKs, dvm manages **Dart** SDKs — and it is entirely reasonable to want both. The collision is only that a Flutter SDK bundles a Dart SDK, so fvm's `bin` directory also answers a bare `dart`.
+
+Whichever of the two is earlier on `PATH` wins for `dart`. That is a decision to make deliberately rather than discover:
+
+- **Shims first (`~/.dvm/shims` ahead of `~/fvm/default/bin`).** A bare `dart` follows your dvm pins everywhere. `flutter` is untouched — it is a different executable and fvm still answers it. This is the right default if you write Dart packages and use dvm's `.dvmrc` pins.
+- **fvm first.** A bare `dart` is whatever Dart ships inside your current Flutter SDK, which is what you want if the Dart version must always match the Flutter version. dvm still works; you reach it explicitly through [`dvm dart`](/commands/dart) and [`dvm exec`](/commands/exec), which do not depend on `PATH` order at all.
+
+There is no need to uninstall anything. Order the two entries the way you want, and `dvm doctor` will tell you which one is actually winning.
 
 ## The shadowing shell function
 

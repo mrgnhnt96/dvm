@@ -17,9 +17,14 @@ dvm setup
 Wrote /Users/you/.dvm/shims/dart
   -> /Users/you/.dvm/bin/dvm exec dart
 
-Add this to ~/.zshrc:
+Add this line to /Users/you/.zshrc (/bin/zsh):
 
   export PATH="/Users/you/.dvm/shims:$PATH"
+
+It has to go ahead of anything else that puts a dart on PATH, and it only takes effect in shells started after you save the file.
+
+Or let dvm add it for you: dvm setup --write-path-line
+It backs /Users/you/.zshrc up before touching it, and dvm setup --remove-path-line takes the line back out.
 
 Then check it with: dvm doctor
 ```
@@ -70,6 +75,36 @@ Shells started after this will no longer find the shims. The shims themselves ar
 ```
 
 A line you typed yourself is recognised too — different quoting, or `$HOME` in place of your home directory, still counts as already on `PATH` — and removal reports it and leaves it exactly as you wrote it.
+
+## Where in the file it writes
+
+`--write-path-line` **appends** its block to the end of the startup file. It does not try to find a good spot in the middle, and it does not reorder anything you wrote.
+
+The end is a deliberately safe place to land, because a startup file is read top to bottom and a line like `export PATH=/a:/b:/c` — with no `$PATH` on the right-hand side — replaces `PATH` outright and discards everything set above it. Appending puts dvm's line after such an assignment rather than in front of it, where it would be silently erased.
+
+That is a consequence of going last, not an understanding of your file. If another tool later rewrites its own absolute `PATH` assignment at the end of the file, it ends up below dvm's block and the shims stop winning. [The Shim and Your PATH](/getting-started/shell-setup) works through that case with a before and after.
+
+It also writes to exactly one file — the one named for your `$SHELL`, which for bash is always `~/.bashrc`. If your shell reads something else, add the line there yourself.
+
+## When it refuses to write
+
+A shell function or alias named `dvm` is resolved before `PATH` is ever searched, so it beats the binary outright. Writing the `PATH` line in that state would look like it worked and change nothing, so `--write-path-line` declines and says why, leaving the file untouched:
+
+```text
+Wrote /Users/you/.dvm/shims/dart
+  -> /Users/you/.dvm/bin/dvm exec dart
+
+Not writing the PATH line: something in your startup files would beat it, or dvm could not read a file that might. A shell function or alias is resolved before PATH is ever searched, so the line would change nothing while looking like it worked.
+Sort out the warnings below, then run this again.
+
+WARNING: your shell defines its own `dvm`, which will win over the binary you just set up — a shell function or alias is resolved before PATH is ever searched.
+  /Users/you/.zshrc:1: alias dvm='fvm dart'
+Remove or comment out the line(s) above, then start a new shell.
+
+Then check it with: dvm doctor
+```
+
+A startup file that exists but cannot be read counts the same way, because the file dvm could not open may be the one holding the definition. Clear the warning, start a new shell, and run it again.
 
 ## On Windows
 

@@ -12,19 +12,61 @@ dvm which
 
 [`doctor`](/commands/doctor) covers the machine — `PATH`, shims, shell startup files, config. [`which`](/commands/which) covers this directory — which SDK, and which of the [five rules](/versions/resolution-order) chose it. Between them they name almost everything on this page.
 
-## `dart --version` is not the version I pinned
+## `which dart` is not dvm's shim
 
-Check what `dart` even is:
+The most common report there is, usually phrased as "I installed dvm and `dart` is still the wrong version". Two commands settle it.
 
 ```sh
 which dart
 ```
 
-If it is **not** `~/.dvm/shims/dart`, the shim is not being reached and your pin is irrelevant. Two causes:
+```text
+/Users/you/fvm/default/bin/dart
+```
 
-**Something earlier on `PATH` supplies a `dart`.** `PATH` is searched left to right, so Homebrew's `dart`, a Flutter SDK's bundled `dart`, or `/usr/local/bin/dart` appearing before `~/.dvm/shims` wins. There is no error — that is the whole problem. `dvm doctor` prints the offending entry. Move `~/.dvm/shims` to the front and start a new shell.
+Anything other than `~/.dvm/shims/dart` means the shim is not being reached and your pin is irrelevant — nothing dvm knows about versions has any effect. Then:
 
-**You never ran [`dvm setup`](/commands/setup).** The shim does not exist yet.
+```sh
+dvm doctor
+```
+
+```text
+dvm doctor
+  FAIL  PATH: /Users/you/.dvm/shims is not on PATH, so `dart` does not go through dvm.
+          PATH order (entries that provide a dart):
+            1. /Users/you/fvm/default/bin
+          -> Add it to your shell startup file: export PATH="/Users/you/.dvm/shims:$PATH"
+  ok    shims: /Users/you/.dvm/shims/dart runs /Users/you/.dvm/bin/dvm.
+  ok    shell: no shell function or alias named `dvm` in your startup files.
+
+1 problem, 0 warnings.
+```
+
+`doctor` numbers every `PATH` entry that provides a `dart`, so it names the directory that is actually winning instead of leaving you to read `$PATH` by eye. Work down these four causes in order; the `doctor` output tells you which one you are in.
+
+**You ran `dvm setup` but not `dvm setup --write-path-line`.** These do different things. Plain `dvm setup` writes the shim and *prints* the `PATH` line; it edits nothing. This is exactly the state above: the `shims` line is `ok`, the `PATH` line is `FAIL`, and everything looks installed because it *is* installed. Fix it with:
+
+```sh
+dvm setup --write-path-line
+```
+
+**Another version manager is earlier on `PATH`.** [fvm](https://fvm.app) is the usual one — it manages Flutter SDKs, and every Flutter SDK bundles a `dart`, so `~/fvm/default/bin` answers a bare `dart` too. asdf's shims, a Homebrew `dart`, a Flutter checkout's `bin/cache/dart-sdk/bin`, and a hand-unzipped SDK in `~/.local/bin` all do the same. `doctor` reports this as the shims being on `PATH` *behind* something:
+
+```text
+  FAIL  PATH: /Users/you/.dvm/shims is on PATH but an entry ahead of it provides a dart, so the shim is never reached.
+          PATH order (entries that provide a dart):
+            2. /Users/you/.dvm/shims  <- dvm shims
+            1. /Users/you/fvm/default/bin
+          -> Put the shims first: export PATH="/Users/you/.dvm/shims:$PATH"
+```
+
+The numbers are `PATH` positions; dvm lists its own entry first so you can see where it landed. You do not have to remove the other tool — see [Running dvm and fvm on the same machine](/getting-started/shell-setup) for choosing which one wins on purpose.
+
+**The line is in your startup file but something below it overwrites `PATH`.** A line like `export PATH=/a:/b:/c`, with no `$PATH` on the right-hand side, *replaces* `PATH` rather than adding to it, discarding everything set above it. If dvm's line is above one of those, it is silently erased — and the file visibly contains the correct line, which is what makes this one so hard to see. Move dvm's line **below** the absolute assignment. [Where in the *file* the line goes](/getting-started/shell-setup) has the before and after.
+
+**You never ran [`dvm setup`](/commands/setup) at all.** Then `doctor` fails on `shims` as well as `PATH`, and the shim simply does not exist yet.
+
+In every case the fix takes effect in shells started afterwards, so open a new terminal before re-testing.
 
 If `which dart` *is* the shim, the pin is being resolved and the answer is not what you expected. Run `dvm which` — it names the rule and the file.
 
