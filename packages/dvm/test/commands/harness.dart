@@ -48,8 +48,11 @@ class CommandHarness {
   String get output => out.toString();
   String get errors => err.toString();
 
+  String? executablePath;
+
   Future<int> run(List<String> args) => dvm.run(
         args,
+        executablePath: executablePath,
         fileSystem: fileSystem,
         environment: environment,
         platformVersion: '3.13.2 (stable) on "macos_arm64"',
