@@ -770,7 +770,7 @@ from_out="$(HOME="${from_home}" DVM_HOME="${from_dvm}" PATH="${fake_bin}:${PATH}
 # shells where it works, but nothing here rests on it.
 check "install_from_main.sh exits 0" "0" "${from_status}"
 check "install_from_main.sh reaches its last line" "0" \
-  "$(printf '%s\n' "${from_out}" | tail -n 1 | grep -q -- '-v doctor' \
+  "$(printf '%s\n' "${from_out}" | tail -n 1 | grep -q -- 'dvm setup --write-path-line' \
     && echo 0 || echo 1)"
 check "install_from_main.sh reports no shell error" "1" \
   "$(echo "${from_out}" | grep -q 'unbound variable\|parameter not set' \
@@ -1116,7 +1116,7 @@ check "stamp_version.sh still refuses a mismatched version" "0" \
 # An untracked script counts. The copy that caused this had never been committed
 # — that is why no test ran it and no gate covered it — so this walks the tree
 # rather than asking git what is tracked.
-for phrase in "One command finishes the setup" "before it exists is deliberate"; do
+for phrase in "One command finishes the setup" "Manual option (no startup-file edits by dvm)"; do
   copies="$(
     find "${root}" -type f -name '*.sh' \
       ! -path "${root}/install.sh" \
@@ -1130,6 +1130,58 @@ for phrase in "One command finishes the setup" "before it exists is deliberate";
   )"
   check "[${phrase}] appears in install.sh only" "" "${copies}"
 done
+
+# --- scanability and color ----------------------------------------------------
+
+check "recommended setup is the final line" "  ${fn_bin}/dvm setup --write-path-line" \
+  "$(printf '%s\n' "${fn_offpath}" | tail -n 1)"
+check "shadow recovery ends with setup after the prerequisite steps" \
+  "  ${fn_bin}/dvm setup --write-path-line" \
+  "$(printf '%s\n' "${fn_shadowed}" | tail -n 1)"
+check "closing guidance fits in a short terminal" "0" \
+  "$([ "$(printf '%s\n' "${fn_offpath}" | wc -l)" -le 18 ] && echo 0 || echo 1)"
+
+plain_style="$(styled '1;36' 'setup command')"
+check "redirected output contains no color escapes" "setup command" "${plain_style}"
+colored_style="$(
+  color_enabled() { return 0; }
+  styled '1;36' 'setup command'
+)"
+check "colored commands include a reset" "$(printf '\033[1;36msetup command\033[0m')" \
+  "${colored_style}"
+
+# Exercise the real terminal detection, including curl | sh's piped stdin.
+if command -v python3 > /dev/null 2>&1; then
+  python3 - "${root}/install.sh" <<'PYTEST'
+import os
+import pty
+import select
+import subprocess
+import sys
+
+script = '. "$1"; styled "1;36" "setup command"'
+for term, no_color, expected in [
+    ('xterm-256color', '', True),
+    ('xterm-256color', '1', False),
+    ('dumb', '', False),
+    ('', '', False),
+]:
+    master, slave = pty.openpty()
+    env = dict(os.environ, DVM_INSTALL_SH_LIB='1', TERM=term, NO_COLOR=no_color)
+    child = subprocess.Popen(
+        ['sh', '-c', script, 'sh', sys.argv[1]], env=env,
+        stdin=subprocess.PIPE, stdout=slave, stderr=subprocess.PIPE,
+    )
+    _, errors = child.communicate(timeout=10)
+    assert select.select([master], [], [], 5)[0], errors
+    output = os.read(master, 4096)
+    os.close(slave)
+    os.close(master)
+    assert child.returncode == 0, errors
+    assert (b'\x1b[1;36m' in output) == expected, (term, no_color, output)
+print('ok   terminal colors honor NO_COLOR and TERM with piped stdin')
+PYTEST
+fi
 
 # --- result -------------------------------------------------------------------
 
