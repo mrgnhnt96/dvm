@@ -33,6 +33,22 @@ the shim afterwards, `dvm doctor` names the entry that is winning. See
 for the details, including the `export PATH=...` line that discards everything
 above it.
 
+## Output color
+
+Save your preferred color mode once:
+
+```sh
+dvm config color always
+```
+
+Use `never` to disable colors or `auto` to restore terminal detection. Run
+`dvm config color` to see the saved preference. It is stored in
+`~/.dvm/config.json` (or `$DVM_HOME/config.json`). A command-line flag such as
+`dvm --color=never doctor` overrides it for that invocation without changing
+what is saved. In `auto` mode, `NO_COLOR` and `TERM=dumb` disable colors;
+`always` forces colors even in redirected output. This controls DVM's output,
+not output from Dart commands it launches.
+
 ## Pin a project
 
 [`dvm install`](https://dvm.mrgnhnt.com/commands/install) puts an SDK in the
