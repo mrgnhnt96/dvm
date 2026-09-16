@@ -1,6 +1,7 @@
 import '../core/channel.dart';
 import '../core/context.dart';
 import '../core/exceptions.dart';
+import 'setup_command.dart';
 
 /// How many alias hops to follow before giving up, matching the resolver.
 const int maxAliasHops = 8;
@@ -105,7 +106,10 @@ VersionRef resolveVersionRef(DvmContext context, String pin) {
 /// without leaving a `bin/dart` behind is a failure, not a success, and saying
 /// so here is cheaper than the confusing error the next command would give.
 Future<void> ensureInstalled(DvmContext context, VersionRef ref) async {
-  if (context.installer.isInstalled(ref.version)) return;
+  if (context.installer.isInstalled(ref.version)) {
+    await setupIfMissing(context);
+    return;
+  }
 
   context.out.writeln('Dart ${ref.version} is not installed yet; '
       'installing it now.');
@@ -119,6 +123,7 @@ Future<void> ensureInstalled(DvmContext context, VersionRef ref) async {
       version: ref.version,
     );
   }
+  await setupIfMissing(context);
 }
 
 /// Records [ref] as the machine-wide default in `~/.dvm/config.json`.

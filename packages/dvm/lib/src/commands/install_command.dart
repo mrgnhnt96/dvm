@@ -3,6 +3,7 @@ import 'package:args/command_runner.dart';
 import '../core/channel.dart';
 import '../core/context.dart';
 import '../core/exceptions.dart';
+import 'setup_command.dart';
 
 /// `dvm install` — Download, verify and install a Dart SDK.
 class InstallCommand extends Command<int> {
@@ -59,6 +60,7 @@ class InstallCommand extends Command<int> {
         ),
       );
       _recordChannel(target);
+      await setupIfMissing(context);
       return 0;
     }
 
@@ -73,6 +75,9 @@ class InstallCommand extends Command<int> {
       context.styles.heading('Installed Dart ${target.version} to '
           '${context.display(directory.path)}'),
     );
+    if (context.installer.isInstalled(target.version)) {
+      await setupIfMissing(context);
+    }
     return 0;
   }
 

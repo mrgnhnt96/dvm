@@ -18,6 +18,10 @@ dvm ships as a compiled binary, so it is ready on a machine that has never had
 Dart on it — it is the thing that installs Dart. From there,
 [`dvm setup`](https://dvm.mrgnhnt.com/getting-started/shell-setup) writes the
 `dart` shim and hands you the one line that puts it on your `PATH`.
+The compiled DVM also runs this setup automatically when `dvm install`,
+`dvm use`, or `dvm global` makes an SDK available and the shim is missing,
+including when the SDK was already installed. Automatic setup prints PATH
+instructions without editing shell startup files; existing shims are preserved.
 
 Note that plain `dvm setup` **prints** that line rather than adding it — it does
 not edit your shell startup file. To have dvm add it for you:

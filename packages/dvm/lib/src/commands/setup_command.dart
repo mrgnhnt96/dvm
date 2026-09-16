@@ -85,7 +85,10 @@ class SetupCommand extends Command<int> {
     // from a source checkout the way an undo should.
     if (remove) return _removePathLine();
 
-    final binary = _resolveDvmBinary();
+    return _setup(_resolveDvmBinary(), write: write);
+  }
+
+  Future<int> _setup(File binary, {required bool write}) async {
     final writer = ShimWriter(
       fileSystem: context.fileSystem,
       paths: context.paths,
@@ -798,4 +801,21 @@ class SetupCommand extends Command<int> {
       fileSystem.path.join(context.workingDirectory.path, path),
     );
   }
+}
+
+/// Creates a missing shim after an SDK becomes available, without editing PATH.
+Future<void> setupIfMissing(DvmContext context) async {
+  final fs = context.fileSystem;
+  if (fs.typeSync(context.paths.dartShim.path, followLinks: false) !=
+      FileSystemEntityType.notFound) {
+    return;
+  }
+  final executable = context.executablePath;
+  final name = executable.split(RegExp(r'[/\\]')).last;
+  // A source invocation runs inside the Dart VM, which cannot launch DVM.
+  if (executable.isEmpty || name == 'dart' || name == 'dart.exe') return;
+  final binary = fs.file(executable);
+  if (!fs.path.isAbsolute(executable) || !binary.existsSync()) return;
+
+  await SetupCommand(context: context)._setup(binary, write: false);
 }
