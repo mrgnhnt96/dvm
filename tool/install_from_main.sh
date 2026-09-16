@@ -97,20 +97,11 @@ mv -f "${tmp}/dvm" "${bin_dir}/dvm.new"
 mv -f "${bin_dir}/dvm.new" "${bin_dir}/dvm"
 
 info ""
-info "dvm (${branch} @ ${commit}) is installed at ${bin_dir}/dvm"
+styled '1;32' "dvm (${branch} @ ${commit}) is installed at ${bin_dir}/dvm"
 
-# From here down it is install.sh's closing sequence, in install.sh's order and
-# with install.sh's arguments: scan first, because the answer changes the
-# message, then the next steps, then the warning last so it is what stays on
-# screen. Three calls, no wording of its own.
+# Diagnostics precede the shared closing actions, so setup is the last line.
 shadow_lines="$(scan_startup_files "${HOME:-}")"
-
-print_next_steps "${shadow_lines}" "${dvm_home}" "${bin_dir}"
-
+info ""
+info "Check your installation with: ${bin_dir}/dvm doctor"
 warn_about_shadows "${shadow_lines}" "${dvm_home}" "${bin_dir}/dvm"
-
-info ""
-info "To check what it thinks of your machine at any point:"
-info ""
-info "  ${bin_dir}/dvm doctor"
-info "  ${bin_dir}/dvm -v doctor      # the same, with the resolution walk"
+print_next_steps "${shadow_lines}" "${dvm_home}" "${bin_dir}"

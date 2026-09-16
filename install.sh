@@ -38,7 +38,23 @@ die() {
 }
 
 info() {
-  echo "$*"
+  printf '%s\n' "$*"
+}
+
+# stdout remains a terminal when curl pipes the script into sh. Redirected
+# output stays plain, and NO_COLOR / TERM=dumb disable styling.
+color_enabled() {
+  [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ -n "${TERM:-}" ] && [ "${TERM}" != dumb ]
+}
+
+styled() {
+  style_code="$1"
+  shift
+  if color_enabled; then
+    printf '\033[%sm%s\033[0m\n' "${style_code}" "$*"
+  else
+    info "$*"
+  fi
 }
 
 need() {
@@ -339,8 +355,8 @@ scan_legacy_install() {
   return 0
 }
 
-# The closing warning. "$1" is the shadowing lines already found by
-# scan_startup_files, "$2" the dvm home, "$3" the installed binary's path.
+# Warnings shown before the closing actions. "$1" holds shadowing lines
+# from scan_startup_files and "$2" is the dvm home.
 #
 # The shadow scan is done by the CALLER and passed in rather than repeated
 # here: main has to know the answer BEFORE it prints the next step, because
@@ -354,37 +370,17 @@ scan_legacy_install() {
 warn_about_shadows() {
   shadow_lines="$1"
   legacy_lines="$(scan_legacy_install "$2")"
-  shadow_dvm="$3"
 
   if [ -n "${shadow_lines}" ]; then
     info ""
-    info "!! Your shell already defines its own \`dvm\`."
-    info ""
-    info "   A shell function or alias is resolved before PATH is ever"
-    info "   searched, so the dvm just installed will NOT run — \`dvm setup\`"
-    info "   would run the other one and fail with an error that looks"
-    info "   unrelated to this install."
-    info ""
-    echo "${shadow_lines}" | sed 's/^/   /'
-    info ""
-    info "   Fix it in this order:"
-    info ""
-    info "     1. comment out the line(s) above"
-    info "     2. start a new shell"
-    info "     3. then run:"
-    info ""
-    info "          ${shadow_dvm} setup --write-path-line"
-    info ""
-    info "   Step 1 first, and not for tidiness: until it is done, \`dvm setup"
-    info "   --write-path-line\` refuses to write anything, because a function"
-    info "   or alias beats PATH and the line would change nothing while"
-    info "   looking like it worked. That is why the command is step 3 and not"
-    info "   the first thing to try."
+    styled '1;33' "!! Your shell already defines its own \`dvm\`."
+    info "A function or alias wins over PATH; setup refuses to write until it is removed."
+    echo "${shadow_lines}" | sed 's/^/  /'
   fi
 
   if [ -n "${legacy_lines}" ]; then
     info ""
-    info "!! An older dvm (cbracken/dvm) shares $2:"
+    styled '1;33' "!! An older dvm (cbracken/dvm) shares $2:"
     info ""
     echo "${legacy_lines}" | sed 's/^/   /'
     info ""
@@ -395,98 +391,42 @@ warn_about_shadows() {
   return 0
 }
 
-# What the user does now that the binary is on disk. "$1" is the shadowing
-# lines already found by scan_startup_files, "$2" the dvm home, "$3" the
-# directory the binary was installed into.
-#
-# A FUNCTION, and not a block inside main, because main is not the only caller.
-# tool/install_from_main.sh installs a build of the checkout the same way and
-# has to close with the same words — it used to carry a hand-copied version of
-# them, and the copy went stale the day this message was rewritten: it still
-# described three steps that no longer existed, so a correct install looked
-# broken to the person following it. tool/test_install_sh.sh now fails if this
-# prose turns up anywhere else in the repo, because a comment saying "this is a
-# copy" is not a guard.
-#
-# TWO DIRECTORIES, ONE STEP. The bin directory is what makes the `dvm` command
-# resolvable; `<dvm home>/shims` is what makes `dart` and `flutter` resolve to
-# the shims. They are different directories and both have to be on PATH.
-#
-# The thing that collapses this from three steps to one: DVM DOES NOT HAVE TO
-# BE ON PATH TO BE RUN. The caller has just written the binary and knows its
-# absolute path, so it can hand out a command that works in the shell the user
-# is standing in right now — and that one command does the whole job, because
-# `dvm setup` writes the shim and `--write-path-line` writes a single PATH line
-# covering BOTH directories (see _pathDirectories in
-# packages/dvm/lib/src/commands/setup_command.dart).
-#
-# The absolute path is used even when the bin directory is already on PATH. It
-# costs nothing to paste and it names THIS dvm, not whichever one an existing
-# PATH entry would have found.
-#
-# A shadow is handled first and separately: `--write-path-line` refuses to
-# write while a `dvm` function or alias is defined, so offering it as the
-# immediate next step would send the user to a command guaranteed to decline.
-# The caller's warn_about_shadows orders that fix and names the command as its
-# step 3, which is why this prints a pointer and stops when "$1" is non-empty.
+# Shared by both installers. Keep commands last, after warnings and context.
+# The absolute binary path works before the user has configured PATH.
 print_next_steps() {
   steps_shadow_lines="$1"
   steps_dvm_home="$2"
   steps_bin_dir="$3"
 
   info ""
-
   if [ -n "${steps_shadow_lines}" ]; then
-    info "Before dvm can finish setting itself up, there is something in your"
-    info "shell startup files to clear — see below."
-  else
-    case ":${PATH}:" in
-      *":${steps_bin_dir}:"*)
-        # The bin directory is already on PATH, so only the shims half can
-        # still be missing. Both options stay, and both shrink to that half.
-        info "One command finishes the setup:"
-        info ""
-        info "  ${steps_bin_dir}/dvm setup --write-path-line"
-        info ""
-        info "That installs the dart shim and adds ${steps_dvm_home}/shims to your"
-        info "startup file, backing it up first. Then start a new shell and"
-        info "you are done. (${steps_bin_dir} is already on your PATH.)"
-        info ""
-        info "Or, if you would rather dvm did not edit your files, add this"
-        info "line yourself and then run  dvm setup :"
-        info ""
-        info "  export PATH=\"${steps_dvm_home}/shims:\$PATH\""
-        ;;
-      *)
-        info "One command finishes the setup — dvm does not have to be on PATH"
-        info "to be run, so this absolute path works in this shell right now:"
-        info ""
-        info "  ${steps_bin_dir}/dvm setup --write-path-line"
-        info ""
-        info "That installs the dart shim and adds ONE line to your startup"
-        info "file covering both of the directories dvm needs on PATH:"
-        info ""
-        info "  ${steps_dvm_home}/shims   so \`dart\` and \`flutter\` run the shim"
-        info "  ${steps_bin_dir}   so \`dvm\` itself resolves"
-        info ""
-        info "It backs the file up first. Then start a new shell and you are"
-        info "done — one command, one new shell."
-        info ""
-        info "Or, if you would rather dvm did not edit your files, add this one"
-        info "line yourself:"
-        info ""
-        info "  export PATH=\"${steps_dvm_home}/shims:${steps_bin_dir}:\$PATH\""
-        info ""
-        info "then start a new shell and run  dvm setup ."
-        info ""
-        info "Naming ${steps_dvm_home}/shims before it exists is deliberate, not a"
-        info "mistake to fix: a shell skips PATH entries that do not resolve,"
-        info "so the entry goes live the moment \`dvm setup\` creates it."
-        ;;
-    esac
+    styled '1' "Next steps: shell startup files to clear first"
+    info "  1. comment out the line(s) listed above"
+    info "  2. start a new shell"
+    info "  3. run setup, then open a new terminal:"
+    info ""
+    styled '1;36' "  ${steps_bin_dir}/dvm setup --write-path-line"
+    return 0
   fi
 
-  return 0
+  case ":${PATH}:" in
+    *":${steps_bin_dir}:"*) steps_path="${steps_dvm_home}/shims" ;;
+    *) steps_path="${steps_dvm_home}/shims:${steps_bin_dir}" ;;
+  esac
+
+  info "Setup creates the dart shim. Choose how to add it to PATH below."
+  info ""
+  styled '1' "Manual option (no startup-file edits by dvm):"
+  info "Add this line to your shell startup file (sh/bash/zsh):"
+  styled '36' "  export PATH=\"${steps_path}:\$PATH\""
+  info "Then create the shim:"
+  styled '36' "  ${steps_bin_dir}/dvm setup"
+  info ""
+  styled '1;32' "Next step — recommended"
+  info "One command finishes the setup, backing up your startup file first."
+  info "Run this, then open a new terminal:"
+  info ""
+  styled '1;36' "  ${steps_bin_dir}/dvm setup --write-path-line"
 }
 
 main() {
@@ -551,19 +491,16 @@ asset; try again, and if it keeps happening do not install it."
   mv -f "${bin_dir}/dvm.new" "${bin_dir}/dvm"
 
   info ""
-  info "dvm ${tag} is installed at ${bin_dir}/dvm"
+  styled '1;32' "dvm ${tag} is installed at ${bin_dir}/dvm"
 
   # Scanned BEFORE anything is printed, because the answer changes the message:
   # a shadowed shell gets a pointer at the fix instead of the one-step command,
   # and scanning twice would invite the two answers to drift.
   shadow_lines="$(scan_startup_files "${HOME:-}")"
 
+  warn_about_shadows "${shadow_lines}" "${dvm_home}" "${bin_dir}/dvm"
   print_next_steps "${shadow_lines}" "${dvm_home}" "${bin_dir}"
 
-  # Last, so it is the last thing on screen: the reason the step above may not
-  # be enough, or may not be the step at all. This can only warn — it never
-  # touches a startup file, and it never changes the exit status.
-  warn_about_shadows "${shadow_lines}" "${dvm_home}" "${bin_dir}/dvm"
 }
 
 # A seam for tool/test_install_sh.sh, which sources this file to exercise the

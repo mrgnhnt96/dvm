@@ -13,22 +13,19 @@ curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | sh
 
 That is the whole thing. It runs on a machine that has never had Dart on it, which is the machine a Dart version manager is most needed on: the script fetches a compiled binary, so dvm is ready before any SDK exists.
 
-The script prints where it put the binary and what to do next:
+The script uses color to highlight success, warnings, and commands when its output goes to a terminal. Redirected output stays plain; `NO_COLOR` or `TERM=dumb` disables color.
+
+Warnings appear before the next steps. The final section offers manual PATH setup followed by the recommended command:
 
 ```text
-Looking up the newest dvm release...
-Downloading dvm-macos-arm64.zip (v0.2.0)...
+Next step — recommended
+One command finishes the setup, backing up your startup file first.
+Run this, then open a new terminal:
 
-dvm v0.2.0 is installed at /Users/you/.dvm/bin/dvm
-
-Add this to your shell startup file (~/.zshrc, ~/.bashrc, ...):
-
-  export PATH="/Users/you/.dvm/bin:$PATH"
-
-Then start a new shell and run  dvm setup  to install the dart shim.
+  /Users/you/.dvm/bin/dvm setup --write-path-line
 ```
 
-Do both of those. `~/.dvm/bin` on `PATH` is what makes `dvm` runnable; [`dvm setup`](/getting-started/shell-setup) is the separate step that makes plain `dart` follow your project pins.
+Use the absolute path printed for your installation. This creates the `dart` shim and adds both the shim and binary directories to PATH in your shell startup file. If you prefer to edit PATH yourself, follow the manual option printed above it and run plain `dvm setup`.
 
 ### On Windows
 
