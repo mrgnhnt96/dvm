@@ -5,6 +5,7 @@ import 'package:file/file.dart';
 import 'channel.dart';
 import 'exceptions.dart';
 import 'paths.dart';
+import 'style.dart';
 import 'verbose.dart';
 
 /// The contents of `~/.dvm/config.json`.
@@ -16,6 +17,7 @@ import 'verbose.dart';
 class DvmConfig {
   const DvmConfig({
     this.global,
+    this.color,
     this.aliases = const {},
     this.channels = const {},
     Map<String, Object?> unknownKeys = const {},
@@ -23,6 +25,9 @@ class DvmConfig {
 
   /// The default version when no `.dvmrc` applies. Null when unset.
   final String? global;
+
+  /// Saved output preference; null uses automatic terminal detection.
+  final ColorMode? color;
 
   /// User-defined names mapping to a version, a channel, or another alias.
   final Map<String, String> aliases;
@@ -42,11 +47,13 @@ class DvmConfig {
   DvmConfig copyWith({
     String? global,
     bool clearGlobal = false,
+    ColorMode? color,
     Map<String, String>? aliases,
     Map<String, String>? channels,
   }) {
     return DvmConfig(
       global: clearGlobal ? null : (global ?? this.global),
+      color: color ?? this.color,
       aliases: aliases ?? this.aliases,
       channels: channels ?? this.channels,
       unknownKeys: _unknownKeys,
@@ -56,6 +63,7 @@ class DvmConfig {
   Map<String, Object?> toJson() => {
         ..._unknownKeys,
         if (global != null) 'global': global,
+        if (color != null) 'color': color!.name,
         'aliases': aliases,
         if (channels.isNotEmpty) 'channels': channels,
       };
@@ -113,13 +121,21 @@ class ConfigStore {
       );
     }
 
+    final color = _readOptionalString(decoded, 'color', path);
+    if (color != null && !ColorMode.tokens.contains(color)) {
+      throw ConfigException(
+        '$path: "color" must be auto, always, or never; got "$color".',
+      );
+    }
     final config = DvmConfig(
+      color: color == null ? null : ColorMode.values.byName(color),
       global: _readOptionalString(decoded, 'global', path),
       aliases: _readStringMap(decoded, 'aliases', path),
       channels: _readStringMap(decoded, 'channels', path),
       unknownKeys: {
         for (final entry in decoded.entries)
-          if (!const {'global', 'aliases', 'channels'}.contains(entry.key))
+          if (!const {'global', 'aliases', 'channels', 'color'}
+              .contains(entry.key))
             entry.key: entry.value,
       },
     );

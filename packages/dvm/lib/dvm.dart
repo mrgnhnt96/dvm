@@ -9,6 +9,7 @@ import 'package:file/file.dart';
 import 'package:file/local.dart';
 
 import 'src/commands/alias_command.dart';
+import 'src/commands/config_command.dart';
 import 'src/commands/dart_command.dart';
 import 'src/commands/doctor_command.dart';
 import 'src/commands/exec_command.dart';
@@ -171,9 +172,11 @@ class DvmCommandRunner extends CommandRunner<int> {
         defaultsTo: ColorMode.auto.name,
         valueHelp: 'when',
         help: 'Colour the output. `auto` colours only a terminal, and honours '
-            'NO_COLOR and TERM=dumb; `always` overrides both.',
+            'NO_COLOR and TERM=dumb; `always` overrides both. '
+            'Overrides the preference saved by `dvm config color`.',
       );
 
+    addCommand(ConfigCommand(context: context));
     addCommand(InstallCommand(context: context));
     addCommand(UseCommand(context: context));
     addCommand(ListCommand(context: context));
@@ -205,8 +208,17 @@ class DvmCommandRunner extends CommandRunner<int> {
     if (topLevelResults.flag('verbose')) context.verbose.enable();
     // Before anything prints. The environment answer is already baked in; this
     // is the flag having its say over it.
-    context.styles.setMode(
-        ColorMode.values.byName(topLevelResults.option(ColorMode.flag)!));
+    var color = ColorMode.auto;
+    if (topLevelResults.wasParsed(ColorMode.flag)) {
+      color = ColorMode.values.byName(topLevelResults.option(ColorMode.flag)!);
+    } else {
+      try {
+        color = context.config.read().color ?? ColorMode.auto;
+      } on ConfigException {
+        // Keep help and doctor available to diagnose a malformed config.
+      }
+    }
+    context.styles.setMode(color);
     context.verbose.log(
       VerboseArea.cli,
       () => 'dvm ${version()} in ${context.workingDirectory.path}',
