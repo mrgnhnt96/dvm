@@ -1,0 +1,17 @@
+# dvm
+
+> Install Dart SDKs and choose a Dart version for each project on macOS, Linux, or Windows. No existing Dart SDK is required.
+
+Install dvm, configure your shell, then install and select a Dart SDK. Commit .dvmrc and ignore .dvm/.
+
+`dvm use <version>` installs a missing SDK and saves an exact version. For a channel, run `dvm install stable` before `dvm use stable`. A cloned .dvmrc does not download its SDK automatically.
+
+`dvm which` shows the selected SDK; `dvm doctor` diagnoses setup.
+
+## Documentation
+
+- [Getting started](https://dvm.mrgnhnt.com/): Install dvm, set up your shell, and run Dart in your first project.
+- [Managing versions](https://dvm.mrgnhnt.com/versions): Choose Dart versions for projects, set a default, and configure your editor.
+- [Commands](https://dvm.mrgnhnt.com/commands): Command syntax, options, and examples for using dvm.
+- [CI](https://dvm.mrgnhnt.com/guides/ci): Install the required SDK and run your build with dvm exec.
+- [Troubleshooting](https://dvm.mrgnhnt.com/guides/troubleshooting): Fix missing commands, unexpected Dart versions, and editor setup.

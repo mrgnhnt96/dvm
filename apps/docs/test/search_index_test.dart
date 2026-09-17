@@ -43,13 +43,10 @@ void main() {
       expect(linked.difference(indexed), isEmpty, reason: 'these pages are reachable but not searchable');
     });
 
-    test('labels results with the group they live in', () {
-      // The group is what puts "Command Reference" above a result row, and it
-      // comes from `navigation.dart` rather than from the markdown — so it is
-      // the one field that silently empties if the wiring is dropped.
-      final install = index.firstWhere((doc) => doc.url == '/commands/install');
-      expect(install.group, 'Command Reference');
-      expect(index.firstWhere((doc) => doc.url == '/getting-started/installation').group, 'Get Started');
+    test('uses the five canonical pages and their titles', () {
+      expect(index.map((doc) => doc.url), flatNavigation.map((item) => item.href));
+      expect(index.map((doc) => doc.title), flatNavigation.map((item) => item.title));
+      expect(index, hasLength(5));
     });
 
     test('every page contributes at least one searchable section', () {
@@ -77,29 +74,23 @@ void main() {
     }
 
     test('finds each page by the words its own readers would use', () {
-      expect(top('installation'), '/getting-started/installation');
-      expect(top('install script'), '/getting-started/installation');
-      expect(top('quick start'), '/getting-started/quick-start');
-      expect(top('resolution order'), '/versions/resolution-order');
+      expect(top('installation'), '/');
+      expect(top('install script'), '/');
+      expect(top('quick start'), '/');
+      expect(top('resolution order'), '/versions');
       expect(top('troubleshooting'), '/guides/troubleshooting');
     });
 
-    test('finds a command page by the command', () {
-      expect(top('dvm doctor'), '/commands/doctor');
-      expect(top('list-remote'), '/commands/list-remote');
-      // Note the asymmetry with the case above, which is the ranking behaving
-      // rather than misbehaving: `install dvm` wins for /commands/install,
-      // because `dvm install` is that page's literal title. A reader after the
-      // installation GUIDE types `installation` or `install script`, and those
-      // land there. Do not "fix" this by boosting the guide.
-      expect(top('install dvm'), '/commands/install');
+    test('finds command sections directly', () {
+      for (final command in ['doctor', 'list-remote', 'install', 'config', 'update']) {
+        final hits = searchIndex(index, 'dvm $command');
+        expect(hits, isNotEmpty);
+        expect(hits.first.href, '/commands#dvm-$command');
+      }
     });
 
-    test('finds a page by an identifier rather than prose', () {
-      // `.dvmrc` is the file this whole project is organised around, and it is
-      // mentioned on most pages — so this also checks that the page ABOUT it
-      // beats the pages that merely use it.
-      expect(top('.dvmrc'), '/versions/dvmrc');
+    test('finds version guidance by its configuration filename', () {
+      expect(top('.dvmrc'), '/versions');
     });
 
     test('requires every token to match', () {

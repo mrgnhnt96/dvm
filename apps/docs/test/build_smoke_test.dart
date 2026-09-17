@@ -86,7 +86,7 @@ void main() {
     // so, and the deploy pipeline is what would have to answer for it.
     test('emits a domain root, which is what the site is served from', () {
       expect(homePage, contains('<base href="/"/>'));
-      expect(homePage, contains('href="/commands/install"'));
+      expect(homePage, contains('href="/commands"'));
     });
   });
 
@@ -129,7 +129,7 @@ void main() {
     // else entirely, and the home page is precisely where that mistake still
     // works.
     test('the search index is fetchable from where the dialog will ask for it', () async {
-      final page = await _get(origin.resolve('/commands/install/'));
+      final page = await _get(origin.resolve('/commands/'));
       expect(page.status, 200);
 
       // The path the page actually hands the browser, read out of the client
@@ -162,14 +162,14 @@ void main() {
       // wrong reason. If the index were also served next to each page, the
       // fetch would succeed however the path was resolved and the test would
       // prove nothing about the `<base href>` doing the work.
-      expect((await _get(origin.resolve('/commands/install/search-index.json'))).status, 404);
+      expect((await _get(origin.resolve('/commands/search-index.json'))).status, 404);
     });
 
     // The two kinds of page that fail differently. The home page catches a
     // broken root; a NESTED page catches a broken `<base>`, because that is
     // where a relative `src="main.client.dart.js"` would resolve to the wrong
     // directory rather than merely the wrong root.
-    for (final route in const ['/', '/commands/install', '/guides/troubleshooting']) {
+    for (final route in const ['/', '/commands', '/guides/troubleshooting']) {
       test('every reference on $route resolves', () async {
         final url = origin.resolve(route == '/' ? '/' : '$route/');
         final page = await _get(url);

@@ -1,150 +1,55 @@
 # dvm
 
-A per-project Dart SDK version manager.
-
-`dvm` keeps every Dart SDK you use in one central cache, lets you pin a version
-per project with a committed `.dvmrc`, and makes `dart` resolve to the right SDK
-automatically — the same way `fvm` does for Flutter.
-
-Full documentation: <https://dvm.mrgnhnt.com>
+Install Dart and choose a Dart SDK version for each project. No existing Dart SDK is required.
 
 ## Install
 
+On macOS or Linux:
+
 ```sh
 curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | sh
+"$HOME/.dvm/bin/dvm" setup --write-path-line
 ```
 
-dvm ships as a compiled binary, so it is ready on a machine that has never had
-Dart on it — it is the thing that installs Dart. From there,
-[`dvm setup`](https://dvm.mrgnhnt.com/getting-started/shell-setup) writes the
-`dart` shim and hands you the one line that puts it on your `PATH`.
-The compiled DVM also runs this setup automatically when `dvm install`,
-`dvm use`, or `dvm global` makes an SDK available and the shim is missing,
-including when the SDK was already installed. Automatic setup prints PATH
-instructions without editing shell startup files; existing shims are preserved.
+Open a new terminal. For Windows, follow the [installation guide](https://dvm.mrgnhnt.com/#installation-on-windows).
 
-Note that plain `dvm setup` **prints** that line rather than adding it — it does
-not edit your shell startup file. To have dvm add it for you:
+## Use Dart in a project
+
+From your project directory:
 
 ```sh
-dvm setup --write-path-line
+dvm install stable
+dvm use stable --gitignore
+dart --version
 ```
 
-Either way `~/.dvm/shims` has to come *before* anything else that provides a
-`dart` — a Flutter SDK, `fvm`, asdf, a Homebrew `dart`. If `which dart` is not
-the shim afterwards, `dvm doctor` names the entry that is winning. See
-[The Shim and Your PATH](https://dvm.mrgnhnt.com/getting-started/shell-setup)
-for the details, including the `export PATH=...` line that discards everything
-above it.
+This installs the latest stable SDK and saves its exact version in `.dvmrc`. Commit `.dvmrc` and the `.gitignore` change; keep `.dvm/` local.
 
-## Output color
+To choose a specific version, use `dvm use 3.9.0 --gitignore` instead. Replace `3.9.0` with your project's required version; dvm installs it if needed.
 
-Save your preferred color mode once:
+After cloning a project, read its `.dvmrc` and run `dvm use <version>` with that version before running Dart. Set your editor's Dart SDK path to `.dvm/dart_sdk` beside `.dvmrc`.
 
-```sh
-dvm config color always
-```
+## Common tasks
 
-Use `never` to disable colors or `auto` to restore terminal detection. Run
-`dvm config color` to see the saved preference. It is stored in
-`~/.dvm/config.json` (or `$DVM_HOME/config.json`). A command-line flag such as
-`dvm --color=never doctor` overrides it for that invocation without changing
-what is saved. In `auto` mode, `NO_COLOR` and `TERM=dumb` disable colors;
-`always` forces colors even in redirected output. This controls DVM's output,
-not output from Dart commands it launches.
+| Task | Command |
+| --- | --- |
+| Set the default outside projects | `dvm global stable` (after `dvm install stable`) |
+| Show the selected SDK | `dvm which` |
+| List installed SDKs | `dvm list` |
+| Find available versions | `dvm list-remote` |
+| Run Dart without shell setup | `dvm dart pub get` |
+| Run a command with the project SDK | `dvm exec dart test` |
+| Check setup | `dvm doctor` |
+| Update dvm | `dvm update` |
+| Show command help | `dvm <command> --help` |
 
-## Pin a project
+To upgrade a project's Dart SDK, run `dvm install stable` and `dvm use stable` again, then commit the changed `.dvmrc`.
 
-[`dvm install`](https://dvm.mrgnhnt.com/commands/install) puts an SDK in the
-cache, and [`dvm use`](https://dvm.mrgnhnt.com/commands/use) pins this project to
-it and writes the `.dvmrc` you commit.
+## Documentation
 
-In `~/code/api`:
-
-```console
-$ dvm install 3.13.2
-Downloading Dart 3.13.2 (macos-arm64, stable)
-  dartsdk-macos-arm64-release.zip  0%  (0.0 / 215.4 MB)
-…
-  dartsdk-macos-arm64-release.zip  100%  (215.4 / 215.4 MB)
-Installed Dart 3.13.2 to /Users/you/.dvm/versions/3.13.2
-$ dvm use 3.13.2
-Pinned Dart 3.13.2 for /Users/you/code/api.
-  /Users/you/code/api/.dvmrc -> commit this
-  /Users/you/code/api/.dvm/dart_sdk -> /Users/you/.dvm/versions/3.13.2 (for your IDE; do not commit it)
-`.dvm/` is not ignored yet by /Users/you/code/api/.gitignore. Add it with: dvm use 3.13.2 --gitignore
-$ dart --version
-Dart SDK version: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on "macos_arm64"
-```
-
-## The same command, two answers
-
-Same shell, same `dart`. The directory is the only thing that changed.
-
-In `~/code/api`:
-
-```console
-$ dart --version
-Dart SDK version: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on "macos_arm64"
-```
-
-In `~/code/legacy`:
-
-```console
-$ dart --version
-Dart SDK version: 3.5.4 (stable) (Wed Oct 16 16:18:51 2024 +0000) on "macos_arm64"
-```
-
-"Which Dart am I running?" is a property of the directory you are standing in,
-and [`dvm which`](https://dvm.mrgnhnt.com/commands/which) shows the whole answer
-— the SDK, the version, and which of the
-[five rules](https://dvm.mrgnhnt.com/versions/resolution-order) chose it.
-
-In `~/code/legacy`:
-
-```console
-$ dvm which
-/Users/you/.dvm/versions/3.5.4/bin/dart
-Dart 3.5.4
-Chosen by rule 2 of 5: pinned by /Users/you/code/legacy/.dvmrc.
-SDK: /Users/you/.dvm/versions/3.5.4
-```
-
-## How it works
-
-- **One cache.** Every SDK lives in `~/.dvm/versions/<version>`, extracted once
-  and shared by every project that pins it.
-- **A committed pin.** [`.dvmrc`](https://dvm.mrgnhnt.com/versions/dvmrc) is a
-  small JSON file at the root of a project, and it is the one dvm file you
-  commit. Anyone who clones the repository and has dvm gets the same SDK. It can
-  name a concrete version, a channel, or an
-  [alias](https://dvm.mrgnhnt.com/versions/aliases) such as `work`.
-- **A shim on `PATH`.**
-  [`~/.dvm/shims/dart`](https://dvm.mrgnhnt.com/getting-started/shell-setup) is a
-  two-line shell script that hands off to dvm, so plain `dart` respects the pin —
-  including when a build script or test runner spawns it for you.
-- **A resolution order you can inspect.**
-  [Five rules](https://dvm.mrgnhnt.com/versions/resolution-order), first match
-  wins, and `dvm which` tells you which one answered. Resolution reads two small
-  files, so `dart` stays fast and works offline.
-- **A fallback you set once.** A
-  [global default](https://dvm.mrgnhnt.com/commands/global) covers directories
-  that pin nothing, while a project with a `.dvmrc` uses its own SDK.
-
-On CI, [`dvm exec`](https://dvm.mrgnhnt.com/guides/ci) runs the same resolution
-and hands the command straight to the pinned SDK, so a build machine needs the dvm
-binary and the repository and nothing else.
-
-## Where to go next
-
-- [Installation](https://dvm.mrgnhnt.com/getting-started/installation) — one
-  `curl` command, on a machine that has never had Dart on it.
-- [Quick Start](https://dvm.mrgnhnt.com/getting-started/quick-start) — install an
-  SDK, pin a project, and watch `dart` follow the pin.
-- [Resolution Order](https://dvm.mrgnhnt.com/versions/resolution-order) — the
-  five rules that decide which SDK you get. Read this one first when something is
-  surprising.
-
-## License
-
-MIT
+- [Getting started](https://dvm.mrgnhnt.com/)
+- [Managing versions](https://dvm.mrgnhnt.com/versions)
+- [Commands](https://dvm.mrgnhnt.com/commands)
+- [CI](https://dvm.mrgnhnt.com/guides/ci)
+- [Troubleshooting](https://dvm.mrgnhnt.com/guides/troubleshooting)
+- [llms.txt](llms.txt)

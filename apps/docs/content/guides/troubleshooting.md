@@ -1,186 +1,116 @@
 ---
 title: Troubleshooting
-description: The failures that look like dvm doing nothing at all — and the command that names each one.
+description: Fix missing commands, unexpected Dart versions, and editor setup.
 ---
 
-Start here:
+## Start with these checks
 
 ```sh
 dvm doctor
 dvm which
 ```
 
-[`doctor`](/commands/doctor) covers the machine — `PATH`, shims, shell startup files, config. [`which`](/commands/which) covers this directory — which SDK, and which of the [five rules](/versions/resolution-order) chose it. Between them they name almost everything on this page.
+`doctor` checks setup. `which` shows the SDK selected in the current directory and why it was selected.
 
-## `which dart` is not dvm's shim
+## dvm is not found
 
-The most common report there is, usually phrased as "I installed dvm and `dart` is still the wrong version". Two commands settle it.
+For the default macOS or Linux installation:
 
 ```sh
-which dart
+"$HOME/.dvm/bin/dvm" setup --write-path-line
 ```
 
-```text
-/Users/you/fvm/default/bin/dart
-```
+Open a new terminal. If that executable is missing, [install dvm](/) first. For a custom installation, use the path printed by the installer.
 
-Anything other than `~/.dvm/shims/dart` means the shim is not being reached and your pin is irrelevant — nothing dvm knows about versions has any effect. Then:
+On Windows, run `& "$env:USERPROFILE\.dvm\bin\dvm.exe" setup` in PowerShell and follow its printed commands.
+
+## dart is missing or uses the wrong version
 
 ```sh
 dvm doctor
 ```
 
-```text
-dvm doctor
-  FAIL  PATH: /Users/you/.dvm/shims is not on PATH, so `dart` does not go through dvm.
-          PATH order (entries that provide a dart):
-            1. /Users/you/fvm/default/bin
-          -> Add it to your shell startup file: export PATH="/Users/you/.dvm/shims:$PATH"
-  ok    shims: /Users/you/.dvm/shims/dart runs /Users/you/.dvm/bin/dvm.
-  ok    shell: no shell function or alias named `dvm` in your startup files.
+If PATH is the problem, run `dvm setup --write-path-line` on macOS or Linux and open a new terminal. Plain `dvm setup` only prints PATH instructions.
 
-1 problem, 0 warnings.
-```
+Ensure `~/.dvm/shims` appears before other directories supplying Dart. If the line is already in your startup file, move it after other PATH changes and make sure your shell reads that file. See [Shell Setup](/#manual-shell-setup).
 
-`doctor` numbers every `PATH` entry that provides a `dart`, so it names the directory that is actually winning instead of leaving you to read `$PATH` by eye. Work down these four causes in order; the `doctor` output tells you which one you are in.
-
-**You ran `dvm setup` but not `dvm setup --write-path-line`.** These do different things. Plain `dvm setup` writes the shim and *prints* the `PATH` line; it edits nothing. This is exactly the state above: the `shims` line is `ok`, the `PATH` line is `FAIL`, and everything looks installed because it *is* installed. Fix it with:
+If shell setup is correct, run `dvm which`. Check the `.dvmrc` it names and any `DVM_DART_VERSION` override. To clear an override in bash/zsh:
 
 ```sh
-dvm setup --write-path-line
+unset DVM_DART_VERSION
 ```
 
-**Another version manager is earlier on `PATH`.** [fvm](https://fvm.app) is the usual one — it manages Flutter SDKs, and every Flutter SDK bundles a `dart`, so `~/fvm/default/bin` answers a bare `dart` too. asdf's shims, a Homebrew `dart`, a Flutter checkout's `bin/cache/dart-sdk/bin`, and a hand-unzipped SDK in `~/.local/bin` all do the same. `doctor` reports this as the shims being on `PATH` *behind* something:
+In PowerShell, use `Remove-Item Env:DVM_DART_VERSION`.
 
-```text
-  FAIL  PATH: /Users/you/.dvm/shims is on PATH but an entry ahead of it provides a dart, so the shim is never reached.
-          PATH order (entries that provide a dart):
-            2. /Users/you/.dvm/shims  <- dvm shims
-            1. /Users/you/fvm/default/bin
-          -> Put the shims first: export PATH="/Users/you/.dvm/shims:$PATH"
-```
+## dvm runs the old version manager
 
-The numbers are `PATH` positions; dvm lists its own entry first so you can see where it landed. You do not have to remove the other tool — see [Running dvm and fvm on the same machine](/getting-started/shell-setup) for choosing which one wins on purpose.
+Run `type dvm` in bash/zsh. If it reports a shell function or alias, remove that definition from your startup file and open a new terminal.
 
-**The line is in your startup file but something below it overwrites `PATH`.** A line like `export PATH=/a:/b:/c`, with no `$PATH` on the right-hand side, *replaces* `PATH` rather than adding to it, discarding everything set above it. If dvm's line is above one of those, it is silently erased — and the file visibly contains the correct line, which is what makes this one so hard to see. Move dvm's line **below** the absolute assignment. [Where in the *file* the line goes](/getting-started/shell-setup) has the before and after.
+For an older `cbracken/dvm` installation, follow [Migrating](#migrating-from-cbrackendvm).
 
-**You never ran [`dvm setup`](/commands/setup) at all.** Then `doctor` fails on `shims` as well as `PATH`, and the shim simply does not exist yet.
+## The pinned SDK is not installed
 
-In every case the fix takes effect in shells started afterwards, so open a new terminal before re-testing.
-
-If `which dart` *is* the shim, the pin is being resolved and the answer is not what you expected. Run `dvm which` — it names the rule and the file.
-
-## `dvm` runs, but it is not the dvm I installed
-
-The one that costs an afternoon.
-
-The older [`cbracken/dvm`](/guides/migrating) installs itself as a **shell function** sourced from `.zshrc` or `.bashrc`. A shell function is resolved *before `PATH` is searched at all*, so the binary you installed is never reached — and the two tools have enough overlapping command names that the errors read like your own mistakes.
-
-```sh
-type dvm      # "dvm is a shell function" => this is you
-```
-
-`dvm doctor` reports it by file and line. Delete the line that sources the old script and start a new shell.
-
-## `DVM_DART_VERSION` is set and I forgot
-
-Rule 1 beats everything on disk, including the `.dvmrc` you are looking at.
-
-```sh
-echo "$DVM_DART_VERSION"
-```
-
-`dvm which` says so outright when this is what happened:
-
-```text
-Chosen by rule 1 of 5: DVM_DART_VERSION is set in the environment, which overrides everything on disk.
-```
-
-Common source: a shell exported it in an earlier command, or a CI job set it at the workflow level and you are debugging a step that inherits it.
-
-## "is pinned by … but it is not installed"
-
-```text
-dvm: Dart 3.9.0 is pinned by /Users/you/code/api/.dvmrc, but it is not installed. Run: dvm install 3.9.0
-```
-
-Exactly what it says. dvm refuses to fall through to another SDK, because silently running a different version than the project asked for is the failure the tool exists to prevent.
+Run the install command shown in the error, for example:
 
 ```sh
 dvm install 3.9.0
 ```
 
-Or, if the pin is wrong, `dvm use <right version>`.
+Cloning a repository with `.dvmrc` does not install its SDK automatically. To create the editor link too, run `dvm use 3.9.0` with the version from that file.
 
-## "no stable SDK has been installed, so dvm does not know which version that is"
+## dvm does not know which version stable is
 
-Your pin says `stable`, but nothing has recorded what `stable` means on this machine.
-
-[Resolution answers a channel name from `config.json`](/versions/aliases), so `stable` means whatever was written down when you last ran `dvm install stable`. Run it:
+Install the channel before selecting it:
 
 ```sh
 dvm install stable
+dvm use stable
 ```
 
-## "No Dart SDK applies in …"
+The same applies to `beta` and `dev`.
 
-[Rule 5](/versions/resolution-order): nothing matched. The message lists all four things it checked. Pick one:
+## No Dart SDK applies
+
+Select a project version with `dvm use <version>`, or set a default with `dvm global <version>`.
+
+If a default names an SDK you removed, reinstall that version or choose a new default.
+
+## An SDK is broken or installation was interrupted
+
+Reinstall the affected version:
 
 ```sh
-dvm use <version>      # pin this project
-dvm global <version>   # set a machine-wide fallback
+dvm install 3.9.0 --force
 ```
 
-## An SDK is installed but marked `BROKEN: no bin/dart`
+Replace `3.9.0` with the required version. If the download fails again, check your connection and retry the command shown in the error.
 
-An interrupted install, or something in `~/.dvm/versions` that is not an SDK. `dvm list` shows it and marks it, because a few hundred megabytes of unusable disk is worth knowing about.
+## My editor uses another SDK
+
+From the project directory, run `dvm use <version>` with the version in `.dvmrc`. Set the editor's Dart SDK path to `.dvm/dart_sdk` beside that file. Restart the editor's Dart analyzer if needed.
+
+Keep `.dvm/` out of version control. If it was committed, remove it from Git's index with `git rm --cached -r .dvm`, then run `dvm use <version> --gitignore`.
+
+## dvm exec cannot find a command
+
+Install the named program and put its executable directory on PATH. For a globally activated Dart tool, this is usually `~/.pub-cache/bin`. A local script can be run by path, for example `dvm exec ./tool/build.sh`.
+
+## Migrating from cbracken/dvm
+
+Install this dvm using [Getting started](/). Before running setup, remove the line that sources `~/.dvm/scripts/dvm` from your shell startup file, along with any old function or alias named `dvm`. Open a new terminal.
+
+Use the installed executable directly to preview and import your SDKs, then configure your shell:
 
 ```sh
-dvm remove <version> --force
-dvm install <version>
+"$HOME/.dvm/bin/dvm" migrate --dry-run
+"$HOME/.dvm/bin/dvm" migrate
+"$HOME/.dvm/bin/dvm" setup --write-path-line
 ```
 
-## The global default names something that is not installed
+Open another terminal. Run `dvm list` to see your imported SDKs. Select your default with `dvm global <version>` and pin each project with `dvm use <version> --gitignore`.
 
-```text
-The global default names 3.9.0, which is not installed. Run: dvm install 3.9.0
-```
-
-This is what [`dvm remove --force`](/commands/remove) leaves behind, and while it lasts, every command run outside a pinned project fails. Either install it or repoint it with [`dvm global`](/commands/global).
-
-## My IDE has not noticed the pin
-
-The `dart` on `PATH` is only half the story for editors — many want an SDK *directory*. [`dvm use`](/commands/use) writes one for exactly this:
-
-```text
-.dvm/dart_sdk -> ~/.dvm/versions/3.13.2
-```
-
-It sits in the directory that holds the `.dvmrc`, so in a monorepo look next to the pin that governs your package rather than in the package you are standing in. Point the analyzer or Dart plugin at it and it follows the pin along with everything else. Keep it out of version control — it is an absolute path into your home directory.
-
-## The `.dvm/` symlink got committed
-
-```sh
-git rm --cached -r .dvm
-dvm use <version> --gitignore
-```
-
-The second command appends `.dvm/` to `.gitignore` for you; dvm makes that edit when you pass the flag.
-
-## `dvm exec: command not found: X`
-
-Exit code 127, the same as a shell. The command was not on the child's `PATH` — which is the pinned SDK's `bin`, then everything you already had. If `X` is a globally activated Dart executable, it lives in `~/.pub-cache/bin`, which has to be on your `PATH` for `dvm exec` to find it too.
-
-## An interrupted install
-
-`~/.dvm/cache` holds in-flight downloads and is safe to delete at any time:
-
-```sh
-rm -rf ~/.dvm/cache
-```
-
-Extraction happens in `cache/` and is renamed into place atomically, so `versions/` only ever holds complete SDKs and `cache/` is the whole of the cleanup.
+Check `dvm doctor` and `dart --version`. Once the new setup works, run `dvm migrate --clean` and confirm to remove the old tool's files.
 
 ## Still stuck
 
-`dvm doctor` output and `dvm which` output, together, describe the whole state that decides which SDK you get. They are the right thing to paste into [an issue](https://github.com/mrgnhnt96/dvm/issues).
+Include the output of `dvm --version`, `dvm doctor`, and `dvm which` when [opening an issue](https://github.com/mrgnhnt96/dvm/issues). Use `dvm --verbose doctor` if you need more detail.

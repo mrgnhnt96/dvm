@@ -14,9 +14,7 @@
 /// and works down should never hit a page that depends on one below it. That
 /// order is also what the prev/next links walk.
 ///
-/// Regroup here rather than moving markdown files — a page's URL comes from its
-/// path under `content/`, so moving one breaks every inbound link for the sake
-/// of a sidebar heading.
+/// When moving a page, keep a redirect under `web/` for its previous URL.
 library;
 
 /// A single page entry in the sidebar.
@@ -54,105 +52,15 @@ final class NavGroup {
 
 /// Pages that sit above the grouped navigation.
 const List<NavItem> topLevelNavigation = [
-  NavItem('Introduction', '/', summary: 'What dvm is, and how the pieces fit together.'),
+  NavItem('Getting started', '/', summary: 'Install dvm, set up your shell, and run your first project.'),
+  NavItem('Managing versions', '/versions', summary: 'Project pins, defaults, channels, aliases, and editors.'),
+  NavItem('Commands', '/commands', summary: 'Command syntax, options, and updating dvm.'),
+  NavItem('CI', '/guides/ci', summary: 'Install the required SDK and run your build.'),
+  NavItem('Troubleshooting', '/guides/troubleshooting', summary: 'Fix setup problems and migrate from cbracken/dvm.'),
 ];
 
 /// The grouped sidebar navigation, in reading order.
-const List<NavGroup> navigation = [
-  NavGroup(
-    'Get Started',
-    icon: NavIcons.rocket,
-    summary: 'Install dvm, pin your first project, and put the shim on PATH.',
-    items: [
-      NavItem(
-        'Installation',
-        '/getting-started/installation',
-        summary: 'One curl command, no Dart SDK required first.',
-      ),
-      NavItem(
-        'Quick Start',
-        '/getting-started/quick-start',
-        summary: 'Install an SDK, pin a project, and watch `dart` follow it.',
-      ),
-      NavItem(
-        'The Shim and Your PATH',
-        '/getting-started/shell-setup',
-        summary: 'What `dvm setup` writes, and the one line you add yourself.',
-      ),
-    ],
-  ),
-  NavGroup(
-    'Pinning Versions',
-    icon: NavIcons.pin,
-    summary: 'How a project says which SDK it wants, and how dvm decides.',
-    items: [
-      NavItem(
-        'The .dvmrc File',
-        '/versions/dvmrc',
-        summary: 'The file you commit, its format, and what a pin may contain.',
-      ),
-      NavItem(
-        'Aliases and Channels',
-        '/versions/aliases',
-        summary: 'Name a version, and what `stable` means offline.',
-      ),
-      NavItem(
-        'Resolution Order',
-        '/versions/resolution-order',
-        summary: 'The five rules, in order — the thing to read when dvm picks the wrong SDK.',
-      ),
-    ],
-  ),
-  NavGroup(
-    'Command Reference',
-    icon: NavIcons.terminal,
-    summary: 'Every command dvm ships, with its real flags.',
-    items: [
-      NavItem('dvm install', '/commands/install', summary: 'Download, verify and install a Dart SDK.'),
-      NavItem('dvm use', '/commands/use', summary: 'Pin a version for this project and write .dvmrc.'),
-      NavItem('dvm list', '/commands/list', summary: 'List installed SDKs, marking the global and the project.'),
-      NavItem('dvm list-remote', '/commands/list-remote', summary: 'List the releases available from the archive.'),
-      NavItem('dvm remove', '/commands/remove', summary: 'Delete an installed SDK.'),
-      NavItem('dvm alias', '/commands/alias', summary: 'Give a version a name, or list the names you have.'),
-      NavItem('dvm unalias', '/commands/unalias', summary: 'Remove a named version.'),
-      NavItem('dvm global', '/commands/global', summary: 'Set the version used when no .dvmrc applies.'),
-      NavItem('dvm which', '/commands/which', summary: 'Print the resolved SDK and which rule chose it.'),
-      NavItem('dvm dart', '/commands/dart', summary: 'Run dart from the resolved SDK.'),
-      NavItem('dvm exec', '/commands/exec', summary: 'Run any command with the resolved SDK first on PATH.'),
-      NavItem('dvm setup', '/commands/setup', summary: 'Install the shims and print the PATH line to add.'),
-      NavItem('dvm migrate', '/commands/migrate', summary: 'Import SDKs from the older cbracken/dvm layout.'),
-      NavItem('dvm doctor', '/commands/doctor', summary: 'Check PATH order, shim health, symlinks and config.'),
-      NavItem('dvm update', '/commands/update', summary: 'Update dvm itself to the newest release.'),
-    ],
-  ),
-  NavGroup(
-    'Guides',
-    icon: NavIcons.book,
-    summary: 'The jobs that take more than one command.',
-    items: [
-      NavItem(
-        'Updating dvm',
-        '/guides/updating-dvm',
-        summary: 'How a new dvm reaches your machine, and how to turn the notice off.',
-      ),
-      NavItem(
-        'Migrating from cbracken/dvm',
-        '/guides/migrating',
-        summary: 'Move an existing ~/.dvm across without re-downloading anything.',
-      ),
-      NavItem(
-        'Using dvm in CI',
-        '/guides/ci',
-        summary: 'Pin the SDK a build uses, without a shim or a shell profile.',
-      ),
-      NavItem(
-        'Troubleshooting',
-        '/guides/troubleshooting',
-        summary: 'The failures that look like dvm doing nothing at all.',
-      ),
-    ],
-  ),
-];
+const List<NavGroup> navigation = [];
 
 /// Pages that intentionally live outside the sidebar.
 ///

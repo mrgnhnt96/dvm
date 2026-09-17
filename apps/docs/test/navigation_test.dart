@@ -77,23 +77,24 @@ void main() {
     expect(itemFor('/nothing-here'), isNull);
   });
 
-  // ARCHITECTURE.md is the contract the CLI is written against, and this site
-  // documents that contract. A command that exists and has no page is a hole in
-  // the docs that nothing else would report.
-  test('every command registered by the CLI has a page', () {
+  test('every command registered by the CLI has a reference section', () {
     final commands = RegExp(
       r'addCommand\((\w+)Command\(',
     ).allMatches(File('../../packages/dvm/lib/dvm.dart').readAsStringSync()).map((match) => match.group(1)!).toList();
 
     expect(commands, isNotEmpty, reason: 'found no addCommand() calls — did lib/dvm.dart move?');
 
-    final documented = {for (final item in flatNavigation) item.href};
+    final reference = File('content/commands.md').readAsStringSync();
+    final documented = RegExp(
+      r'^## dvm ([a-z-]+)$',
+      multiLine: true,
+    ).allMatches(reference).map((match) => match.group(1)!).toSet();
     final undocumented = [
       for (final command in commands)
-        if (!documented.contains('/commands/${_routeName(command)}')) command,
+        if (!documented.contains(_routeName(command))) command,
     ];
 
-    expect(undocumented, isEmpty, reason: 'these commands have no page under content/commands/');
+    expect(undocumented, isEmpty, reason: 'these commands have no section in content/commands.md');
   });
 }
 

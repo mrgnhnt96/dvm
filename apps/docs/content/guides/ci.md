@@ -1,157 +1,56 @@
 ---
-title: Using dvm in CI
-description: Get a build machine onto the SDK a project pins, without a shim, a shell profile, or a login shell.
+title: CI
+description: Install the required SDK and run your build with dvm exec.
 ---
 
-CI is where dvm's design pays off most reliably: the version a build uses is the version in the repository, the same one developers have.
+Your CI job needs dvm, the SDK named in `.dvmrc`, and your project's dependencies. `dvm exec` selects the project version without shell startup configuration.
 
-The main thing to know is that **[`dvm exec`](/commands/exec) is all a build machine needs.** The shim exists to make an interactive shell's `dart` follow the pin; in CI you write every command yourself, so naming `dvm exec` in front of them is simpler and takes no configuration.
+## A Linux CI job
 
-## The short version
-
-```yaml
-- name: Install dvm
-  run: curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | sh
-
-- name: Install the pinned SDK
-  run: ~/.dvm/bin/dvm install "$(cat .dvmrc | tr -d '{}" ' | cut -d: -f2)"
-
-- name: Test
-  run: ~/.dvm/bin/dvm exec dart test
-```
-
-That parsing is ugly. Two better options follow.
-
-## Option 1 — `dvm use` reads the pin for you
-
-Name the version in the workflow as well as in the repository, and let the two check each other:
-
-```yaml
-- name: Install dvm
-  run: |
-    curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | sh
-    echo "$HOME/.dvm/bin" >> "$GITHUB_PATH"
-
-- name: Install the pinned SDK
-  run: dvm install 3.13.2      # must match .dvmrc
-
-- name: Test
-  run: dvm exec dart test
-```
-
-`dvm exec` resolves through [rule 2](/versions/resolution-order) — the repository's own `.dvmrc` — so the build tests against the SDK `.dvmrc` names. If the workflow ever names a different one, the `exec` step says so at once.
-
-## Option 2 — `DVM_DART_VERSION`
-
-[Rule 1](/versions/resolution-order) exists for exactly this. It overrides everything on disk, including the `.dvmrc`:
-
-```yaml
-env:
-  DVM_DART_VERSION: 3.13.2
-
-steps:
-  - run: curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | sh
-  - run: ~/.dvm/bin/dvm install "$DVM_DART_VERSION"
-  - run: ~/.dvm/bin/dvm exec dart test
-```
-
-Use this when the build needs a *different* SDK from the one the repository pins — a matrix that tests against several versions is the obvious case:
-
-```yaml
-strategy:
-  matrix:
-    dart: ['3.9.0', '3.13.2']
-env:
-  DVM_DART_VERSION: ${{ matrix.dart }}
-```
-
-Rule 1 is also the right lever for a one-off locally:
+After checking out the repository, run these commands from its root. This example assumes `.dvmrc` pins `3.9.0`; replace it with your project's version.
 
 ```sh
-DVM_DART_VERSION=3.9.0 dart test
+curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | sh
+export PATH="$HOME/.dvm/bin:$PATH"
+dvm --no-version-check install 3.9.0
+dvm --no-version-check which
+dvm --no-version-check exec dart pub get
+dvm --no-version-check exec dart test
 ```
 
-## Turn the update notice off
+Keep the installation version in sync when changing `.dvmrc`. The job fails if the selected SDK is not installed.
 
-```yaml
-env:
-  DVM_DART_VERSION: 3.13.2
-run: dvm --no-version-check exec dart test
+## Test another Dart version
+
+Set `DVM_DART_VERSION` in the job environment to override `.dvmrc`. Install that version before running the build:
+
+```sh
+export DVM_DART_VERSION=3.9.0
+dvm --no-version-check install "$DVM_DART_VERSION"
+dvm --no-version-check exec dart pub get
+dvm --no-version-check exec dart test
 ```
 
-The notice is for a human at a terminal, and the check costs a network request per command, so a build runs faster and quieter without it.
+For a version matrix, give each job a different `DVM_DART_VERSION` value.
 
-## Cache `~/.dvm/versions`
+## Cache SDK downloads
 
-An SDK download is the slowest part of the job and the most cacheable:
+Cache `~/.dvm/versions`, or `$DVM_HOME/versions` if configured. Include the operating system, CPU architecture, and required Dart version in the cache key. If the version comes from `.dvmrc`, include that file's hash.
 
-```yaml
-- uses: actions/cache@v4
-  with:
-    path: ~/.dvm/versions
-    key: dvm-${{ runner.os }}-${{ hashFiles('.dvmrc') }}
+## Scripts that call dart directly
+
+Run the script through dvm so Dart is available to commands inside it:
+
+```sh
+dvm --no-version-check exec ./tool/build.sh
 ```
 
-Key it on `.dvmrc` so bumping the pin invalidates the cache. Cache `versions/` and leave `~/.dvm/cache` to itself — that one holds in-flight download scratch, disposable by design, and a job starts cleaner without it.
+The script must be executable. You can also run `dvm --no-version-check exec sh ./tool/build.sh` for a shell script.
 
-## In a Dockerfile
+## Windows runners
 
-Pin the installer as well as the SDK, so the image builds the same way every time:
+Install `dvm.exe` using the [Windows installation steps](/#installation-on-windows) and add its directory to the job's PATH. Then use the same `dvm install` and `dvm exec` commands as above.
 
-```dockerfile
-ENV DVM_VERSION=0.2.0
-RUN curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | sh
-ENV PATH="/root/.dvm/bin:${PATH}"
+## Pin the dvm release
 
-COPY .dvmrc .
-RUN dvm install 3.13.2
-```
-
-`DVM_HOME` moves the whole installation somewhere else if `/root` is wrong for your image.
-
-## Using the shim in CI
-
-It works, and it is the right choice when the build runs scripts you did not write that call `dart` directly:
-
-```yaml
-- run: |
-    curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/dvm/main/install.sh | sh
-    "$HOME/.dvm/bin/dvm" setup
-    echo "$HOME/.dvm/shims" >> "$GITHUB_PATH"
-    echo "$HOME/.dvm/bin" >> "$GITHUB_PATH"
-```
-
-Note the order: shims go [ahead of everything else on `PATH` that supplies a `dart`](/getting-started/shell-setup). GitHub's `$GITHUB_PATH` prepends, so the *last* line written ends up first — writing `shims` then `bin` gives you `bin` first, which works fine. Confirm it with `dvm doctor`.
-
-## On a Windows runner
-
-The same three steps, with the release zip in place of the install script — see [Installation](/getting-started/installation#on-windows) for where the binary comes from. Name the dvm version, the way the Dockerfile above does, so the job installs the same dvm every time:
-
-```yaml
-- name: Install dvm
-  shell: pwsh
-  env:
-    DVM_VERSION: v0.2.0
-  run: |
-    $zip = "$env:RUNNER_TEMP\dvm.zip"
-    Invoke-WebRequest -OutFile $zip -Uri `
-      "https://github.com/mrgnhnt96/dvm/releases/download/$env:DVM_VERSION/dvm-windows-x64.zip"
-    Expand-Archive $zip -DestinationPath "$env:USERPROFILE\.dvm\bin"
-    "$env:USERPROFILE\.dvm\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-
-- name: Install the pinned SDK
-  run: dvm install 3.13.2
-
-- name: Test
-  run: dvm exec dart test
-```
-
-`dvm install`, `dvm exec` and `dvm which` behave the same there as anywhere else, and the cache step above already keys on `runner.os`, so adding `windows-latest` to a matrix caches its SDKs separately without another change.
-
-## Verify before you rely on it
-
-```yaml
-- run: dvm which
-```
-
-One line in the log that names the SDK **and the rule that chose it** turns "which Dart did that build actually use?" from an investigation into a scroll.
+Set `DVM_VERSION` when running the install script to choose a specific dvm release. See [Installation](/#installation-options).
