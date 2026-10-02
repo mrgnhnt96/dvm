@@ -176,13 +176,73 @@ final class DvmDocsLayout extends DocsLayout {
     // dedupes so a settled query fires at most once (and not again if retyped
     // identically). Fires only when the query is non-empty and >= 2 chars, and
     // guards `window.amplitude` being undefined (loader not yet ready).
+    //
+    // The event carries a numeric `result_count` (0 = no results). Results
+    // render reactively (the in-browser scorer re-renders on each keystroke)
+    // but the search index is fetched async on first open, and Jaspr's DOM
+    // reconciliation is deferred, so the DOM is not guaranteed to reflect the
+    // settled query the instant the debounce fires. After it settles we poll
+    // the dialog (~150ms, capped at ~1500ms) until the count is stable, then
+    // read it once. jaspr_search's DOM (pinned commit ddc628d) renders hits as
+    // `li.jaspr-search-hit-item` (anchor `a.jaspr-search-hit`) inside
+    // `ul.jaspr-search-hit-list`, scoped to `#jaspr-search-dialog`; the
+    // non-result states share `.jaspr-search-empty` with a `data-state` of
+    // `loading` / `idle` / `no-results` / `error`. A hit count > 0 or a
+    // `no-results` / `error` panel is a settled read; `loading` / `idle` is
+    // not, so polling keeps waiting through the index fetch.
     yield script(
       content: r'''
 (function () {
   var SELECTOR = '#jaspr-search-input, .jaspr-search-field input';
   var DEBOUNCE_MS = 800;
+  var POLL_MS = 150;
+  var MAX_WAIT_MS = 1500;
   var timer = null;
   var lastSent = null;
+  var generation = 0;
+
+  // Reads the dialog's current result state. `settled` is false while the
+  // index is still loading (or nothing is rendered yet) so polling keeps
+  // waiting; `count` is the number of result rows (0 for the empty state).
+  function snapshot() {
+    var scope = document.getElementById('jaspr-search-dialog') || document;
+    var count = scope.querySelectorAll('.jaspr-search-hit-item').length;
+    if (count === 0) count = scope.querySelectorAll('a.jaspr-search-hit').length;
+    if (count > 0) return { count: count, settled: true };
+    var empty = scope.querySelector('.jaspr-search-empty');
+    var state = empty ? empty.getAttribute('data-state') : null;
+    if (state === 'no-results' || state === 'error') return { count: 0, settled: true };
+    return { count: 0, settled: false };
+  }
+
+  function send(query, count) {
+    if (!window.amplitude || typeof window.amplitude.track !== 'function') return;
+    window.amplitude.track('docs_search', { search_term: query, result_count: count });
+  }
+
+  // Polls until two consecutive settled reads agree (stable), or the cap is
+  // hit, then sends exactly once. `myGen` aborts a stale measure if a newer
+  // settled query supersedes this one.
+  function measureAndSend(query, myGen) {
+    var waited = 0;
+    var lastCount = null;
+    (function poll() {
+      if (myGen !== generation) return;
+      var snap = snapshot();
+      if (snap.settled && snap.count === lastCount) {
+        send(query, snap.count);
+        return;
+      }
+      lastCount = snap.settled ? snap.count : null;
+      waited += POLL_MS;
+      if (waited >= MAX_WAIT_MS) {
+        send(query, snap.count);
+        return;
+      }
+      setTimeout(poll, POLL_MS);
+    })();
+  }
+
   document.addEventListener('input', function (event) {
     var target = event.target;
     if (!target || typeof target.matches !== 'function' || !target.matches(SELECTOR)) return;
@@ -190,9 +250,8 @@ final class DvmDocsLayout extends DocsLayout {
     if (timer) clearTimeout(timer);
     timer = setTimeout(function () {
       if (query.length < 2 || query === lastSent) return;
-      if (!window.amplitude || typeof window.amplitude.track !== 'function') return;
       lastSent = query;
-      window.amplitude.track('docs_search', { search_term: query });
+      measureAndSend(query, ++generation);
     }, DEBOUNCE_MS);
   }, true);
 })();
