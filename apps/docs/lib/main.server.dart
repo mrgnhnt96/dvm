@@ -163,6 +163,42 @@ final class DvmDocsLayout extends DocsLayout {
       content: "window.amplitude.init('15288b16e4a64d54978fa9d86adddad1', { serverZone: 'US', autocapture: true });",
     );
 
+    // Docs search-term tracking. Sends ONE `docs_search` Amplitude event per
+    // settled search query. The search dialog (jaspr_search's SearchDialog) and
+    // its text input mount LAZILY client-side — the input is NOT in the
+    // pre-rendered HTML — so this binds a document-level 'input' listener and
+    // filters to the input itself rather than attaching to it directly. The
+    // input carries `id="jaspr-search-input"` inside `.jaspr-search-field`
+    // (hardcoded in jaspr_search at the pinned commit); both are matched so a
+    // drift in either still fires.
+    //
+    // ~800ms debounce collapses keystrokes to the settled query; `lastSent`
+    // dedupes so a settled query fires at most once (and not again if retyped
+    // identically). Fires only when the query is non-empty and >= 2 chars, and
+    // guards `window.amplitude` being undefined (loader not yet ready).
+    yield script(
+      content: r'''
+(function () {
+  var SELECTOR = '#jaspr-search-input, .jaspr-search-field input';
+  var DEBOUNCE_MS = 800;
+  var timer = null;
+  var lastSent = null;
+  document.addEventListener('input', function (event) {
+    var target = event.target;
+    if (!target || typeof target.matches !== 'function' || !target.matches(SELECTOR)) return;
+    var query = (target.value || '').trim();
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(function () {
+      if (query.length < 2 || query === lastSent) return;
+      if (!window.amplitude || typeof window.amplitude.track !== 'function') return;
+      lastSent = query;
+      window.amplitude.track('docs_search', { search_term: query });
+    }, DEBOUNCE_MS);
+  }, true);
+})();
+''',
+    );
+
     yield Style(styles: _styles);
   }
 
